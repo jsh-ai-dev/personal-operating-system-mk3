@@ -1,0 +1,38 @@
+services:
+  mongodb:
+    image: mongo:7
+    container_name: personal-operating-system-mk3-mongodb
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: ${MK3_MONGO_USERNAME:-pos}
+      MONGO_INITDB_ROOT_PASSWORD: ${MK3_MONGO_PASSWORD:-pos}
+      MONGO_INITDB_DATABASE: ${MK3_MONGO_DB:-pos_mk3}
+      TZ: ${MK3_TZ:-Asia/Seoul}
+    ports:
+      - "${MK3_MONGO_BIND:-127.0.0.1}:${MK3_MONGO_PORT:-27017}:27017"
+    volumes:
+      - personal-operating-system-mk3-mongodb-data:/data/db
+    healthcheck:
+      test: ["CMD", "mongosh", "--eval", "db.adminCommand('ping').ok", "--quiet"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    restart: unless-stopped
+
+  qdrant:
+    image: qdrant/qdrant:v1.14.1
+    container_name: personal-operating-system-mk3-qdrant
+    ports:
+      - "${MK3_QDRANT_HTTP_PORT:-6333}:6333"
+      - "${MK3_QDRANT_GRPC_PORT:-6334}:6334"
+    volumes:
+      - personal-operating-system-mk3-qdrant-data:/qdrant/storage
+    healthcheck:
+      test: ["CMD-SHELL", "bash -c '</dev/tcp/localhost/6333'"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    restart: unless-stopped
+
+volumes:
+  personal-operating-system-mk3-mongodb-data:
+  personal-operating-system-mk3-qdrant-data:
