@@ -1,3 +1,6 @@
+# [헬스체크 API] GET /api/v1/health — MongoDB와 Qdrant 연결 상태를 확인하는 엔드포인트
+# 서버가 정상적으로 동작 중인지 빠르게 확인할 때 사용
+
 from fastapi import APIRouter, Depends
 from motor.motor_asyncio import AsyncIOMotorDatabase
 from qdrant_client import AsyncQdrantClient

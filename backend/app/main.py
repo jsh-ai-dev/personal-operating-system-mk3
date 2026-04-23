@@ -1,3 +1,6 @@
+# [앱 진입점] FastAPI 앱 인스턴스를 생성하고 미들웨어, 라우터를 등록하는 파일
+# DB 연결 생명주기(lifespan) 관리와 CORS 설정도 여기서 담당함
+
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI

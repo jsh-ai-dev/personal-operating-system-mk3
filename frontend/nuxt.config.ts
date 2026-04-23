@@ -1,3 +1,6 @@
+// [Nuxt 설정] 개발 서버 포트, 환경변수 노출 범위 등 Nuxt 앱의 전체 설정을 정의하는 파일
+// runtimeConfig로 백엔드 API 주소 등을 앱 내에서 사용할 수 있게 등록함
+
 // https://nuxt.com/docs/api/configuration/nuxt-config
 export default defineNuxtConfig({
   compatibilityDate: '2025-07-15',

@@ -1,3 +1,6 @@
+# [의존성 주입] FastAPI의 Depends()와 함께 사용할 의존성 함수들을 정의
+# 엔드포인트에서 DB 클라이언트를 직접 생성하지 않고 이 파일을 통해 주입받음
+
 from fastapi import Request
 from motor.motor_asyncio import AsyncIOMotorDatabase
 from qdrant_client import AsyncQdrantClient

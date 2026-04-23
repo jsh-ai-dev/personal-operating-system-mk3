@@ -1,3 +1,6 @@
+# [설정] 환경변수와 .env 파일을 읽어 앱 전체 설정값을 관리하는 파일
+# pydantic-settings의 BaseSettings를 사용해 타입 안전하게 설정을 주입함
+
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 

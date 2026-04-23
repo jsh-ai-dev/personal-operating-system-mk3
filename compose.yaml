@@ -1,3 +1,6 @@
+# [인프라 구성] 애플리케이션에 필요한 컨테이너를 정의하는 Docker Compose 파일
+# MongoDB(문서 DB)와 Qdrant(벡터 DB)를 실행하며, .env 파일로 환경변수를 주입할 수 있음
+
 services:
   mongodb:
     image: mongo:7
