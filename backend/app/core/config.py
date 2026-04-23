@@ -21,6 +21,11 @@ class Settings(BaseSettings):
     # CORS 허용 출처 목록 (프론트엔드 주소를 추가해야 브라우저에서 API 호출 가능)
     cors_origins: list[str] = ["http://localhost:3003"]
 
+    # Claude.ai 스크래핑용 세션 쿠키
+    # 브라우저 개발자도구에서 직접 추출해야 하며 주기적으로 만료됨
+    claude_cookie_name: str = "sessionKey"  # 실제 쿠키 이름으로 변경 필요
+    claude_session_cookie: str | None = None
+
 
 # 모듈 로드 시 한 번만 생성 — 앱 전체에서 이 인스턴스를 임포트해 공유
 settings = Settings()

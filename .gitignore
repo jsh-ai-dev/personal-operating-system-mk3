@@ -226,3 +226,6 @@ dist/
 .DS_Store
 Thumbs.db
 desktop.ini
+
+# Playwright 디버그 스크린샷
+backend/debug/
