@@ -1,30 +1,60 @@
-# [스크래퍼 API] POST /api/v1/scraper/claude — Claude.ai 구독 정보를 자동으로 읽어오는 엔드포인트
-# 세션 쿠키(.env의 CLAUDE_SESSION_COOKIE)를 사용해 Playwright로 페이지를 긁어옴
+# [스크래퍼 API] POST /api/v1/scraper/claude — Claude.ai 구독/사용량 정보를 읽어오는 엔드포인트
+# CDP로 연결된 크롬을 통해 스크래핑하고, 결과를 DB의 Claude 서비스 레코드에 자동 반영함
 
+import re
 import traceback
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
+from motor.motor_asyncio import AsyncIOMotorDatabase
 
-from app.adapter.scraper.claude_scraper import scrape_claude_billing
-from app.core.config import settings
+from app.adapter.mongodb.ai_service_repository import AIServiceRepository
+from app.adapter.scraper.claude_scraper import scrape_claude
+from app.core.dependencies import get_db
 
 router = APIRouter(prefix="/scraper", tags=["scraper"])
 
 
 @router.post("/claude")
-async def scrape_claude():
-    if not settings.claude_session_cookie:
-        raise HTTPException(
-            status_code=400,
-            detail="CLAUDE_SESSION_COOKIE가 설정되지 않았습니다. backend/.env 파일을 확인하세요.",
-        )
-
+async def trigger_claude_scrape(db: AsyncIOMotorDatabase = Depends(get_db)):
     try:
-        result = await scrape_claude_billing(
-            cookie_name=settings.claude_cookie_name,
-            cookie_value=settings.claude_session_cookie,
-        )
+        result = await scrape_claude()
     except Exception as e:
         raise HTTPException(status_code=502, detail=f"{type(e).__name__}: {e}\n{traceback.format_exc()}")
 
+    # 로그인이 필요한 상태면 프론트엔드에 알림
+    if result.get('login_required'):
+        return {'login_required': True, 'message': '크롬에서 claude.ai 로그인이 필요합니다.'}
+
+    # DB에서 Claude 서비스 레코드를 찾아 스크래핑 결과로 업데이트
+    repo = AIServiceRepository(db)
+    service = await repo.find_by_name('Claude')
+    if service:
+        update_data = {}
+
+        if result.get('plan_name'):
+            update_data['plan_name'] = result['plan_name']
+
+        # "2026년 5월 22일" → billing_day: 22
+        billing_day = _parse_billing_day(result.get('next_billing_date'))
+        if billing_day:
+            update_data['billing_day'] = billing_day
+
+        # 현재 세션 사용량을 usage_current/limit에 반영
+        if result.get('session_usage_pct') is not None:
+            update_data['usage_current'] = result['session_usage_pct']
+            update_data['usage_limit'] = 100
+            reset_info = result.get('session_reset_in', '')
+            update_data['usage_unit'] = f"% (세션, {reset_info} 후 리셋)" if reset_info else "% (현재 세션)"
+
+        if update_data:
+            await repo.update(service.id, update_data)
+
     return result
+
+
+def _parse_billing_day(date_str: str | None) -> int | None:
+    # "2026년 5월 22일" → 22
+    if not date_str:
+        return None
+    match = re.search(r'(\d{1,2})일', date_str)
+    return int(match.group(1)) if match else None

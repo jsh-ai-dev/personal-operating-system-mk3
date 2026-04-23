@@ -38,5 +38,9 @@ export const useAiServices = () => {
   const remove = (id: string) =>
     api(`/api/v1/ai-services/${id}`, { method: 'DELETE' })
 
-  return { list, get, create, update, remove }
+  // Claude.ai 스크래퍼를 실행하고 DB를 갱신함
+  const syncClaude = () =>
+    api('/api/v1/scraper/claude', { method: 'POST' })
+
+  return { list, get, create, update, remove, syncClaude }
 }

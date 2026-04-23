@@ -32,6 +32,11 @@ class AIServiceRepository:
         docs = await self.col.find().sort("name", 1).to_list(None)
         return [self._to_domain(doc) for doc in docs]
 
+    async def find_by_name(self, name: str) -> AIService | None:
+        # 이름으로 서비스 조회 (대소문자 구분 없음)
+        doc = await self.col.find_one({'name': {'$regex': f'^{name}$', '$options': 'i'}})
+        return self._to_domain(doc) if doc else None
+
     async def find_by_id(self, id: str) -> AIService | None:
         try:
             doc = await self.col.find_one({"_id": ObjectId(id)})
