@@ -2,31 +2,35 @@ services:
   mongodb:
     image: mongo:7
     container_name: personal-operating-system-mk3-mongodb
+    # 환경변수는 .env 파일에서 읽으며, 없으면 :- 뒤의 기본값 사용
     environment:
       MONGO_INITDB_ROOT_USERNAME: ${MK3_MONGO_USERNAME:-pos}
       MONGO_INITDB_ROOT_PASSWORD: ${MK3_MONGO_PASSWORD:-pos}
       MONGO_INITDB_DATABASE: ${MK3_MONGO_DB:-pos_mk3}
       TZ: ${MK3_TZ:-Asia/Seoul}
+    # "외부바인딩IP:호스트포트:컨테이너포트" 형식 (기본: localhost에서만 접근 가능)
     ports:
       - "${MK3_MONGO_BIND:-127.0.0.1}:${MK3_MONGO_PORT:-27017}:27017"
     volumes:
-      - personal-operating-system-mk3-mongodb-data:/data/db
+      - personal-operating-system-mk3-mongodb-data:/data/db  # 컨테이너 삭제 후에도 데이터 유지
     healthcheck:
+      # 컨테이너가 실제로 요청을 처리할 수 있는 상태인지 주기적으로 확인
       test: ["CMD", "mongosh", "--eval", "db.adminCommand('ping').ok", "--quiet"]
       interval: 10s
       timeout: 5s
       retries: 10
-    restart: unless-stopped
+    restart: unless-stopped  # 수동으로 중지하지 않는 한 항상 자동 재시작
 
   qdrant:
     image: qdrant/qdrant:v1.14.1
     container_name: personal-operating-system-mk3-qdrant
     ports:
-      - "${MK3_QDRANT_HTTP_PORT:-6333}:6333"
-      - "${MK3_QDRANT_GRPC_PORT:-6334}:6334"
+      - "${MK3_QDRANT_HTTP_PORT:-6333}:6333"  # HTTP REST API
+      - "${MK3_QDRANT_GRPC_PORT:-6334}:6334"  # gRPC API (고성능 통신용)
     volumes:
       - personal-operating-system-mk3-qdrant-data:/qdrant/storage
     healthcheck:
+      # /dev/tcp로 포트 개방 여부만 확인 (curl 없이 bash 내장 기능 활용)
       test: ["CMD-SHELL", "bash -c '</dev/tcp/localhost/6333'"]
       interval: 10s
       timeout: 5s
