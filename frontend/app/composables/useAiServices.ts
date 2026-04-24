@@ -9,6 +9,7 @@ export interface AIService {
   monthly_cost: number
   currency: string
   billing_day: number
+  next_billing_date: string | null
   usage_limit: number | null
   usage_current: number | null
   usage_unit: string | null
@@ -42,5 +43,9 @@ export const useAiServices = () => {
   const syncClaude = () =>
     api('/api/v1/scraper/claude', { method: 'POST' })
 
-  return { list, get, create, update, remove, syncClaude }
+  // ChatGPT 스크래퍼를 실행하고 DB를 갱신함
+  const syncChatGPT = () =>
+    api('/api/v1/scraper/chatgpt', { method: 'POST' })
+
+  return { list, get, create, update, remove, syncClaude, syncChatGPT }
 }

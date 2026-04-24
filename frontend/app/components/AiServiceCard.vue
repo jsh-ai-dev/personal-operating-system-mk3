@@ -4,8 +4,11 @@
 <script setup lang="ts">
 import type { AIService } from '~/composables/useAiServices'
 
-const props = defineProps<{ service: AIService }>()
-const emit = defineEmits<{ deleted: [id: string] }>()
+const props = defineProps<{
+  service: AIService
+  syncStatus?: 'idle' | 'syncing' | 'done' | 'login_required' | 'error'
+}>()
+const emit = defineEmits<{ deleted: [id: string]; sync: [] }>()
 
 const { remove } = useAiServices()
 
@@ -86,11 +89,23 @@ const handleDelete = async () => {
       </div>
     </div>
 
-    <!-- 청구 페이지 링크 + 수정/삭제 버튼 -->
+    <!-- 청구 페이지 링크 + 갱신/수정/삭제 버튼 -->
     <div class="actions">
       <a v-if="service.billing_url" :href="service.billing_url" target="_blank" class="link">청구 페이지 →</a>
       <span v-else class="link-empty">-</span>
       <div class="btns">
+        <button
+          v-if="syncStatus !== undefined"
+          class="btn btn-sync"
+          :disabled="syncStatus === 'syncing'"
+          @click="emit('sync')"
+        >
+          <span v-if="syncStatus === 'syncing'">갱신 중...</span>
+          <span v-else-if="syncStatus === 'done'">✓ 갱신됨</span>
+          <span v-else-if="syncStatus === 'login_required'">로그인 필요</span>
+          <span v-else-if="syncStatus === 'error'">갱신 실패</span>
+          <span v-else>갱신</span>
+        </button>
         <NuxtLink :to="`/ai-services/${service.id}/edit`" class="btn">수정</NuxtLink>
         <button class="btn btn-delete" @click="handleDelete">삭제</button>
       </div>
@@ -140,4 +155,7 @@ const handleDelete = async () => {
 .btn:hover { background: #f9fafb; }
 .btn-delete { color: #ef4444; border-color: #fca5a5; }
 .btn-delete:hover { background: #fef2f2; }
+.btn-sync { color: #6366f1; border-color: #c7d2fe; }
+.btn-sync:hover:not(:disabled) { background: #eef2ff; }
+.btn-sync:disabled { opacity: 0.5; cursor: default; }
 </style>

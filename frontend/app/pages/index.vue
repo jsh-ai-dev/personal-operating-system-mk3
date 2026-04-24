@@ -4,7 +4,7 @@
 <script setup lang="ts">
 import type { AIService } from '~/composables/useAiServices'
 
-const { list, syncClaude } = useAiServices()
+const { list, syncClaude, syncChatGPT } = useAiServices()
 
 // 전체 AI 서비스 목록 로드 (DB에 저장된 마지막 데이터 즉시 표시)
 const { data: services, refresh } = await useAsyncData('ai-services', list)
@@ -23,21 +23,55 @@ const totalKRW = computed(() =>
 )
 
 // Claude 갱신 상태
-const syncStatus = ref<'idle' | 'syncing' | 'done' | 'login_required' | 'error'>('idle')
+const claudeSyncStatus = ref<'idle' | 'syncing' | 'done' | 'login_required' | 'error'>('idle')
 
-// 대시보드 진입 시 백그라운드에서 Claude 정보 자동 갱신
+// ChatGPT 갱신 상태
+const chatgptSyncStatus = ref<'idle' | 'syncing' | 'done' | 'login_required' | 'error'>('idle')
+
+const runChatGPTSync = async () => {
+  chatgptSyncStatus.value = 'syncing'
+  try {
+    const result: any = await syncChatGPT()
+    if (result?.login_required) {
+      chatgptSyncStatus.value = 'login_required'
+    } else {
+      await refresh()
+      chatgptSyncStatus.value = 'done'
+    }
+  } catch {
+    chatgptSyncStatus.value = 'error'
+  }
+}
+
+// 저장된 next_billing_date가 오늘 이하면 결제일이 지난 것 → 자동 갱신
+const isChatGPTBillingPast = () => {
+  const chatgpt = (services.value ?? []).find((s: AIService) => s.name === 'ChatGPT')
+  if (!chatgpt?.next_billing_date) return false
+  const nextBilling = new Date(chatgpt.next_billing_date)
+  nextBilling.setHours(0, 0, 0, 0)
+  const today = new Date()
+  today.setHours(0, 0, 0, 0)
+  return nextBilling <= today
+}
+
 onMounted(async () => {
-  syncStatus.value = 'syncing'
+  // Claude는 사용량이 자주 바뀌므로 항상 자동 갱신
+  claudeSyncStatus.value = 'syncing'
   try {
     const result: any = await syncClaude()
     if (result?.login_required) {
-      syncStatus.value = 'login_required'
+      claudeSyncStatus.value = 'login_required'
     } else {
-      await refresh()  // DB 갱신된 내용을 화면에 반영
-      syncStatus.value = 'done'
+      await refresh()
+      claudeSyncStatus.value = 'done'
     }
   } catch {
-    syncStatus.value = 'error'
+    claudeSyncStatus.value = 'error'
+  }
+
+  // ChatGPT는 결제일이 지난 경우에만 자동 갱신 (그 외에는 수동 버튼)
+  if (isChatGPTBillingPast()) {
+    await runChatGPTSync()
   }
 })
 
@@ -66,10 +100,11 @@ const handleDeleted = async () => {
       <span class="count">{{ services?.length ?? 0 }}개 서비스</span>
 
       <!-- Claude 갱신 상태 표시 -->
-      <span v-if="syncStatus === 'syncing'" class="sync-status syncing">Claude 갱신 중...</span>
-      <span v-else-if="syncStatus === 'done'" class="sync-status done">방금 갱신됨</span>
-      <span v-else-if="syncStatus === 'login_required'" class="sync-status warn">Claude 로그인 필요</span>
-      <span v-else-if="syncStatus === 'error'" class="sync-status error">Claude 갱신 실패</span>
+      <span v-if="claudeSyncStatus === 'syncing'" class="sync-status syncing">Claude 갱신 중...</span>
+      <span v-else-if="claudeSyncStatus === 'done'" class="sync-status done">Claude 갱신됨</span>
+      <span v-else-if="claudeSyncStatus === 'login_required'" class="sync-status warn">Claude 로그인 필요</span>
+      <span v-else-if="claudeSyncStatus === 'error'" class="sync-status error">Claude 갱신 실패</span>
+
     </div>
 
     <!-- 서비스 카드 목록 -->
@@ -78,7 +113,9 @@ const handleDeleted = async () => {
         v-for="service in services"
         :key="service.id"
         :service="service"
+        :sync-status="service.name === 'ChatGPT' ? chatgptSyncStatus : undefined"
         @deleted="handleDeleted"
+        @sync="runChatGPTSync"
       />
     </div>
 
@@ -124,7 +161,7 @@ h1 { font-size: 1.3rem; }
 .summary-item { display: flex; align-items: baseline; gap: 8px; }
 .summary-item strong { font-size: 1.4rem; color: #111; }
 .count { color: #aaa; }
-.sync-status { font-size: 0.75rem; margin-left: auto; }
+.sync-status { font-size: 0.75rem; }
 .sync-status.syncing { color: #f59e0b; }
 .sync-status.done { color: #22c55e; }
 .sync-status.warn { color: #f59e0b; }

@@ -21,6 +21,7 @@ class AIServiceRepository:
             monthly_cost=doc["monthly_cost"],
             currency=doc["currency"],
             billing_day=doc["billing_day"],
+            next_billing_date=doc.get("next_billing_date"),
             usage_limit=doc.get("usage_limit"),
             usage_current=doc.get("usage_current"),
             usage_unit=doc.get("usage_unit"),
