@@ -21,10 +21,10 @@ if (!service.value) {
 // 기존 데이터를 초기값으로 세팅 (null은 빈 문자열로 변환해 input에 표시)
 const form = reactive({
   name: service.value.name,
-  plan_name: service.value.plan_name,
-  monthly_cost: service.value.monthly_cost as number | string,
+  plan_name: service.value.plan_name ?? '',
+  monthly_cost: (service.value.monthly_cost ?? '') as number | string,
   currency: service.value.currency,
-  billing_day: service.value.billing_day as number | string,
+  billing_day: (service.value.billing_day ?? '') as number | string,
   usage_limit: (service.value.usage_limit ?? '') as number | string,
   usage_current: (service.value.usage_current ?? '') as number | string,
   usage_unit: service.value.usage_unit ?? '',
@@ -43,10 +43,10 @@ const submit = async () => {
   try {
     const data: AIServiceForm = {
       name: form.name,
-      plan_name: form.plan_name,
-      monthly_cost: Number(form.monthly_cost),
+      plan_name: toStr(form.plan_name),
+      monthly_cost: toNum(form.monthly_cost),
       currency: form.currency,
-      billing_day: Number(form.billing_day),
+      billing_day: toNum(form.billing_day),
       usage_limit: toNum(form.usage_limit),
       usage_current: toNum(form.usage_current),
       usage_unit: toStr(form.usage_unit),
@@ -76,13 +76,13 @@ const submit = async () => {
 
       <div class="field">
         <label>플랜명</label>
-        <input v-model="form.plan_name" type="text" required />
+        <input v-model="form.plan_name" type="text" placeholder="스크래핑으로 자동 입력" />
       </div>
 
       <div class="row">
         <div class="field">
           <label>월 구독료</label>
-          <input v-model="form.monthly_cost" type="number" min="0" step="0.01" required />
+          <input v-model="form.monthly_cost" type="number" min="0" step="0.01" />
         </div>
         <div class="field">
           <label>통화</label>
@@ -95,7 +95,7 @@ const submit = async () => {
 
       <div class="field">
         <label>결제일 (매월 몇 일)</label>
-        <input v-model="form.billing_day" type="number" min="1" max="31" required />
+        <input v-model="form.billing_day" type="number" min="1" max="31" />
       </div>
 
       <div class="section-label">사용량 (선택)</div>

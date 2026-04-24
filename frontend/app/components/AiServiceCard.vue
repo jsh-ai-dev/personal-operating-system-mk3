@@ -12,10 +12,11 @@ const emit = defineEmits<{ deleted: [id: string]; sync: [] }>()
 
 const { remove } = useAiServices()
 
-// 다음 결제일 계산: 이번 달 결제일이 이미 지났으면 다음 달로
+// 다음 결제일 계산: 이번 달 결제일이 이미 지났으면 다음 달로 (billing_day가 없으면 null)
 const nextBilling = computed(() => {
-  const today = new Date()
   const day = props.service.billing_day
+  if (!day) return null
+  const today = new Date()
   let date = new Date(today.getFullYear(), today.getMonth(), day)
   if (date <= today) {
     date = new Date(today.getFullYear(), today.getMonth() + 1, day)
@@ -58,13 +59,17 @@ const handleDelete = async () => {
         <div class="plan">{{ service.plan_name }}</div>
       </div>
       <div class="cost">
-        {{ currencySymbol }}{{ service.monthly_cost.toLocaleString() }}<span class="per-month">/월</span>
+        <template v-if="service.monthly_cost != null">
+          {{ currencySymbol }}{{ service.monthly_cost.toLocaleString() }}<span class="per-month">/월</span>
+        </template>
+        <template v-else><span class="per-month">미입력</span></template>
       </div>
     </div>
 
     <!-- 다음 결제일 -->
     <div class="billing">
-      다음 결제일 <span class="date">{{ nextBilling }}</span>
+      <template v-if="nextBilling">다음 결제일 <span class="date">{{ nextBilling }}</span></template>
+      <template v-else><span style="color:#ccc">결제일 미입력</span></template>
     </div>
 
     <!-- 사용량 바: usage_limit이 설정된 경우에만 표시 -->

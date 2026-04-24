@@ -51,10 +51,10 @@ const submit = async () => {
   try {
     const data: AIServiceForm = {
       name: form.name,
-      plan_name: form.plan_name,
-      monthly_cost: Number(form.monthly_cost),
+      plan_name: toStr(form.plan_name),
+      monthly_cost: toNum(form.monthly_cost),
       currency: form.currency,
-      billing_day: Number(form.billing_day),
+      billing_day: toNum(form.billing_day),
       usage_limit: toNum(form.usage_limit),
       usage_current: toNum(form.usage_current),
       usage_unit: toStr(form.usage_unit),
@@ -93,13 +93,13 @@ const submit = async () => {
 
       <div class="field">
         <label>플랜명</label>
-        <input v-model="form.plan_name" type="text" placeholder="예: Plus, Pro, Max" required />
+        <input v-model="form.plan_name" type="text" placeholder="예: Plus, Pro, Max (스크래핑으로 자동 입력)" />
       </div>
 
       <div class="row">
         <div class="field">
           <label>월 구독료</label>
-          <input v-model="form.monthly_cost" type="number" min="0" step="0.01" placeholder="예: 20" required />
+          <input v-model="form.monthly_cost" type="number" min="0" step="0.01" placeholder="예: 20" />
         </div>
         <div class="field">
           <label>통화</label>
@@ -112,7 +112,7 @@ const submit = async () => {
 
       <div class="field">
         <label>결제일 (매월 몇 일)</label>
-        <input v-model="form.billing_day" type="number" min="1" max="31" placeholder="예: 15" required />
+        <input v-model="form.billing_day" type="number" min="1" max="31" placeholder="예: 15" />
       </div>
 
       <div class="section-label">사용량 (선택)</div>

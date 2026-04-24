@@ -5,10 +5,10 @@
 export interface AIService {
   id: string
   name: string
-  plan_name: string
-  monthly_cost: number
+  plan_name: string | null
+  monthly_cost: number | null
   currency: string
-  billing_day: number
+  billing_day: number | null
   next_billing_date: string | null
   usage_limit: number | null
   usage_current: number | null
@@ -47,5 +47,8 @@ export const useAiServices = () => {
   const syncChatGPT = () =>
     api('/api/v1/scraper/chatgpt', { method: 'POST' })
 
-  return { list, get, create, update, remove, syncClaude, syncChatGPT }
+  const syncCodex = () =>
+    api('/api/v1/scraper/codex', { method: 'POST' })
+
+  return { list, get, create, update, remove, syncClaude, syncChatGPT, syncCodex }
 }

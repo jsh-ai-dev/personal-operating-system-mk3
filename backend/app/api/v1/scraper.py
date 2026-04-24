@@ -11,6 +11,7 @@ from motor.motor_asyncio import AsyncIOMotorDatabase
 from app.adapter.mongodb.ai_service_repository import AIServiceRepository
 from app.adapter.scraper.claude_scraper import scrape_claude
 from app.adapter.scraper.chatgpt_scraper import scrape_chatgpt
+from app.adapter.scraper.codex_scraper import scrape_codex
 from app.core.dependencies import get_db
 
 router = APIRouter(prefix="/scraper", tags=["scraper"])
@@ -83,6 +84,56 @@ async def trigger_chatgpt_scrape(db: AsyncIOMotorDatabase = Depends(get_db)):
             await repo.update(service.id, update_data)
 
     return {k: v for k, v in result.items() if k != '_raw'}
+
+
+@router.post("/codex")
+async def trigger_codex_scrape(db: AsyncIOMotorDatabase = Depends(get_db)):
+    try:
+        result = await scrape_codex()
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=f"{type(e).__name__}: {e}\n{traceback.format_exc()}")
+
+    if result.get('login_required'):
+        return {'login_required': True, 'message': '크롬에서 chatgpt.com 로그인이 필요합니다.'}
+
+    repo = AIServiceRepository(db)
+    service = await repo.find_by_name('Codex')
+    if service:
+        update_data = {}
+
+        _PLAN_MAP = {'plus': 'ChatGPT Plus', 'pro': 'ChatGPT Pro', 'team': 'ChatGPT Team'}
+        if result.get('plan_type'):
+            update_data['plan_name'] = _PLAN_MAP.get(result['plan_type'], result['plan_type'].capitalize())
+
+        billing_day = _parse_billing_day(result.get('next_billing_date'))
+        if billing_day:
+            update_data['billing_day'] = billing_day
+
+        if result.get('next_billing_date'):
+            update_data['next_billing_date'] = result['next_billing_date']
+
+        # 5시간 창 사용률을 usage_current/limit에 반영
+        if result.get('primary_usage_pct') is not None:
+            update_data['usage_current'] = result['primary_usage_pct']
+            update_data['usage_limit'] = 100
+            reset_iso = result.get('primary_reset_at', '')
+            reset_label = _format_reset_label(reset_iso)
+            update_data['usage_unit'] = f"% (5h 창{reset_label})"
+
+        if update_data:
+            await repo.update(service.id, update_data)
+
+    return result
+
+
+def _format_reset_label(iso: str) -> str:
+    if not iso:
+        return ''
+    try:
+        dt = datetime.fromisoformat(iso).astimezone(timezone(timedelta(hours=9)))
+        return f", {dt.strftime('%m/%d %H:%M')} 리셋"
+    except ValueError:
+        return ''
 
 
 def _parse_billing_day(date_str: str | None) -> int | None:

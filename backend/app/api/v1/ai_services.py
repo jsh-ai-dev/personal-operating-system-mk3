@@ -17,10 +17,10 @@ router = APIRouter(prefix="/ai-services", tags=["ai-services"])
 # 요청/응답 공통 스키마
 class AIServiceBody(BaseModel):
     name: str
-    plan_name: str
-    monthly_cost: float = Field(ge=0)     # 0 이상
+    plan_name: str | None = None
+    monthly_cost: float | None = Field(default=None, ge=0)
     currency: str = "USD"
-    billing_day: int = Field(ge=1, le=31)  # 1~31일
+    billing_day: int | None = Field(default=None, ge=1, le=31)
     usage_limit: float | None = None
     usage_current: float | None = None
     usage_unit: str | None = None

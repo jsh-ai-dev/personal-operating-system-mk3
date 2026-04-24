@@ -4,29 +4,29 @@
 <script setup lang="ts">
 import type { AIService } from '~/composables/useAiServices'
 
-const { list, syncClaude, syncChatGPT } = useAiServices()
+const { list, syncClaude, syncChatGPT, syncCodex } = useAiServices()
 
 // 전체 AI 서비스 목록 로드 (DB에 저장된 마지막 데이터 즉시 표시)
 const { data: services, refresh } = await useAsyncData('ai-services', list)
 
-// USD 서비스 월 구독료 합산
+// USD 서비스 월 구독료 합산 (monthly_cost가 null인 항목은 제외)
 const totalUSD = computed(() =>
   (services.value ?? [])
-    .filter((s: AIService) => s.currency === 'USD')
-    .reduce((sum: number, s: AIService) => sum + s.monthly_cost, 0)
+    .filter((s: AIService) => s.currency === 'USD' && s.monthly_cost != null)
+    .reduce((sum: number, s: AIService) => sum + s.monthly_cost!, 0)
 )
 
 const totalKRW = computed(() =>
   (services.value ?? [])
-    .filter((s: AIService) => s.currency === 'KRW')
-    .reduce((sum: number, s: AIService) => sum + s.monthly_cost, 0)
+    .filter((s: AIService) => s.currency === 'KRW' && s.monthly_cost != null)
+    .reduce((sum: number, s: AIService) => sum + s.monthly_cost!, 0)
 )
 
-// Claude 갱신 상태
-const claudeSyncStatus = ref<'idle' | 'syncing' | 'done' | 'login_required' | 'error'>('idle')
+type SyncStatus = 'idle' | 'syncing' | 'done' | 'login_required' | 'error'
 
-// ChatGPT 갱신 상태
-const chatgptSyncStatus = ref<'idle' | 'syncing' | 'done' | 'login_required' | 'error'>('idle')
+const claudeSyncStatus = ref<SyncStatus>('idle')
+const chatgptSyncStatus = ref<SyncStatus>('idle')
+const codexSyncStatus = ref<SyncStatus>('idle')
 
 const runChatGPTSync = async () => {
   chatgptSyncStatus.value = 'syncing'
@@ -43,6 +43,21 @@ const runChatGPTSync = async () => {
   }
 }
 
+const runCodexSync = async () => {
+  codexSyncStatus.value = 'syncing'
+  try {
+    const result: any = await syncCodex()
+    if (result?.login_required) {
+      codexSyncStatus.value = 'login_required'
+    } else {
+      await refresh()
+      codexSyncStatus.value = 'done'
+    }
+  } catch {
+    codexSyncStatus.value = 'error'
+  }
+}
+
 // 저장된 next_billing_date가 오늘 이하면 결제일이 지난 것 → 자동 갱신
 const isChatGPTBillingPast = () => {
   const chatgpt = (services.value ?? []).find((s: AIService) => s.name === 'ChatGPT')
@@ -55,19 +70,29 @@ const isChatGPTBillingPast = () => {
 }
 
 onMounted(async () => {
-  // Claude는 사용량이 자주 바뀌므로 항상 자동 갱신
+  // Claude, Codex는 사용량이 자주 바뀌므로 항상 자동 갱신
+  // 같은 Chrome CDP 세션을 공유하므로 순차 실행 (병렬 시 충돌)
+  const hasCodex = (services.value ?? []).some((s: AIService) => s.name === 'Codex')
+
   claudeSyncStatus.value = 'syncing'
   try {
     const result: any = await syncClaude()
-    if (result?.login_required) {
-      claudeSyncStatus.value = 'login_required'
-    } else {
-      await refresh()
-      claudeSyncStatus.value = 'done'
-    }
+    claudeSyncStatus.value = result?.login_required ? 'login_required' : 'done'
   } catch {
     claudeSyncStatus.value = 'error'
   }
+
+  if (hasCodex) {
+    codexSyncStatus.value = 'syncing'
+    try {
+      const result: any = await syncCodex()
+      codexSyncStatus.value = result?.login_required ? 'login_required' : 'done'
+    } catch {
+      codexSyncStatus.value = 'error'
+    }
+  }
+
+  await refresh()
 
   // ChatGPT는 결제일이 지난 경우에만 자동 갱신 (그 외에는 수동 버튼)
   if (isChatGPTBillingPast()) {
@@ -99,12 +124,16 @@ const handleDeleted = async () => {
       </div>
       <span class="count">{{ services?.length ?? 0 }}개 서비스</span>
 
-      <!-- Claude 갱신 상태 표시 -->
+      <!-- 갱신 상태 표시 -->
       <span v-if="claudeSyncStatus === 'syncing'" class="sync-status syncing">Claude 갱신 중...</span>
-      <span v-else-if="claudeSyncStatus === 'done'" class="sync-status done">Claude 갱신됨</span>
+      <span v-else-if="claudeSyncStatus === 'done'" class="sync-status done">Claude ✓</span>
       <span v-else-if="claudeSyncStatus === 'login_required'" class="sync-status warn">Claude 로그인 필요</span>
       <span v-else-if="claudeSyncStatus === 'error'" class="sync-status error">Claude 갱신 실패</span>
 
+      <span v-if="codexSyncStatus === 'syncing'" class="sync-status syncing">Codex 갱신 중...</span>
+      <span v-else-if="codexSyncStatus === 'done'" class="sync-status done">Codex ✓</span>
+      <span v-else-if="codexSyncStatus === 'login_required'" class="sync-status warn">Codex 로그인 필요</span>
+      <span v-else-if="codexSyncStatus === 'error'" class="sync-status error">Codex 갱신 실패</span>
     </div>
 
     <!-- 서비스 카드 목록 -->
