@@ -4,7 +4,7 @@
 <script setup lang="ts">
 import type { AIService } from '~/composables/useAiServices'
 
-const { list, syncClaude, syncChatGPT, syncCodex, syncGemini } = useAiServices()
+const { list, syncClaude, syncChatGPT, syncCodex, syncGemini, syncCursor } = useAiServices()
 
 // 전체 AI 서비스 목록 로드 (DB에 저장된 마지막 데이터 즉시 표시)
 const { data: services, refresh } = await useAsyncData('ai-services', list)
@@ -28,6 +28,7 @@ const claudeSyncStatus = ref<SyncStatus>('idle')
 const chatgptSyncStatus = ref<SyncStatus>('idle')
 const codexSyncStatus = ref<SyncStatus>('idle')
 const geminiSyncStatus = ref<SyncStatus>('idle')
+const cursorSyncStatus = ref<SyncStatus>('idle')
 
 const runChatGPTSync = async () => {
   chatgptSyncStatus.value = 'syncing'
@@ -74,6 +75,21 @@ const runGeminiSync = async () => {
   }
 }
 
+const runCursorSync = async () => {
+  cursorSyncStatus.value = 'syncing'
+  try {
+    const result: any = await syncCursor()
+    if (result?.login_required) {
+      cursorSyncStatus.value = 'login_required'
+    } else {
+      await refresh()
+      cursorSyncStatus.value = 'done'
+    }
+  } catch {
+    cursorSyncStatus.value = 'error'
+  }
+}
+
 // 저장된 next_billing_date가 오늘 이하면 결제일이 지난 것 → 자동 갱신
 const isBillingPast = (name: string) => {
   const service = (services.value ?? []).find((s: AIService) => s.name === name)
@@ -86,9 +102,10 @@ const isBillingPast = (name: string) => {
 }
 
 onMounted(async () => {
-  // Claude, Codex는 사용량이 자주 바뀌므로 항상 자동 갱신
+  // Claude, Codex, Cursor는 사용량이 자주 바뀌므로 항상 자동 갱신
   // 같은 Chrome CDP 세션을 공유하므로 순차 실행 (병렬 시 충돌)
   const hasCodex = (services.value ?? []).some((s: AIService) => s.name === 'Codex')
+  const hasCursor = (services.value ?? []).some((s: AIService) => s.name === 'Cursor')
 
   claudeSyncStatus.value = 'syncing'
   try {
@@ -105,6 +122,16 @@ onMounted(async () => {
       codexSyncStatus.value = result?.login_required ? 'login_required' : 'done'
     } catch {
       codexSyncStatus.value = 'error'
+    }
+  }
+
+  if (hasCursor) {
+    cursorSyncStatus.value = 'syncing'
+    try {
+      const result: any = await syncCursor()
+      cursorSyncStatus.value = result?.login_required ? 'login_required' : 'done'
+    } catch {
+      cursorSyncStatus.value = 'error'
     }
   }
 
@@ -158,6 +185,11 @@ const handleDeleted = async () => {
       <span v-else-if="geminiSyncStatus === 'done'" class="sync-status done">Gemini ✓</span>
       <span v-else-if="geminiSyncStatus === 'login_required'" class="sync-status warn">Gemini 로그인 필요</span>
       <span v-else-if="geminiSyncStatus === 'error'" class="sync-status error">Gemini 갱신 실패</span>
+
+      <span v-if="cursorSyncStatus === 'syncing'" class="sync-status syncing">Cursor 갱신 중...</span>
+      <span v-else-if="cursorSyncStatus === 'done'" class="sync-status done">Cursor ✓</span>
+      <span v-else-if="cursorSyncStatus === 'login_required'" class="sync-status warn">Cursor 로그인 필요</span>
+      <span v-else-if="cursorSyncStatus === 'error'" class="sync-status error">Cursor 갱신 실패</span>
     </div>
 
     <!-- 서비스 카드 목록 -->

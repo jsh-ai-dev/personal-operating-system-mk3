@@ -13,6 +13,7 @@ from app.adapter.scraper.claude_scraper import scrape_claude
 from app.adapter.scraper.chatgpt_scraper import scrape_chatgpt
 from app.adapter.scraper.codex_scraper import scrape_codex
 from app.adapter.scraper.gemini_scraper import scrape_gemini
+from app.adapter.scraper.cursor_scraper import scrape_cursor
 from app.core.dependencies import get_db
 
 router = APIRouter(prefix="/scraper", tags=["scraper"])
@@ -151,6 +152,45 @@ async def trigger_gemini_scrape(db: AsyncIOMotorDatabase = Depends(get_db)):
 
         if result.get('next_billing_date'):
             update_data['next_billing_date'] = result['next_billing_date']
+
+        if update_data:
+            await repo.update(service.id, update_data)
+
+    return result
+
+
+@router.post("/cursor")
+async def trigger_cursor_scrape(db: AsyncIOMotorDatabase = Depends(get_db)):
+    try:
+        result = await scrape_cursor()
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=f"{type(e).__name__}: {e}\n{traceback.format_exc()}")
+
+    if result.get('login_required'):
+        return {'login_required': True, 'message': '크롬에서 cursor.com 로그인이 필요합니다.'}
+
+    repo = AIServiceRepository(db)
+    service = await repo.find_by_name('Cursor')
+    if service:
+        update_data = {}
+
+        if result.get('plan_name'):
+            update_data['plan_name'] = result['plan_name']
+
+        billing_day = _parse_billing_day(result.get('next_billing_date'))
+        if billing_day:
+            update_data['billing_day'] = billing_day
+
+        if result.get('next_billing_date'):
+            update_data['next_billing_date'] = result['next_billing_date']
+
+        if result.get('monthly_cost') is not None:
+            update_data['monthly_cost'] = result['monthly_cost']
+
+        if result.get('usage_current') is not None:
+            update_data['usage_current'] = result['usage_current']
+            update_data['usage_limit'] = result['usage_limit']
+            update_data['usage_unit'] = result.get('usage_unit', '%')
 
         if update_data:
             await repo.update(service.id, update_data)

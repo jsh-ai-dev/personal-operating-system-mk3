@@ -107,7 +107,7 @@ const submit = async () => {
         </div>
         <div class="field">
           <label>현재 사용량</label>
-          <input v-model="form.usage_current" type="number" min="0" />
+          <input v-model="form.usage_current" type="number" min="0" step="0.1" />
         </div>
       </div>
 

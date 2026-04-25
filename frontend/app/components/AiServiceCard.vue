@@ -28,7 +28,7 @@ const nextBilling = computed(() => {
 const usagePct = computed(() => {
   const { usage_limit, usage_current } = props.service
   if (!usage_limit || usage_current === null || usage_current === undefined) return null
-  return Math.min(Math.round((usage_current / usage_limit) * 100), 100)
+  return Math.min(Math.round((usage_current / usage_limit) * 1000) / 10, 100)
 })
 
 // 사용량 비율에 따른 색상: 90% 이상 빨강, 70% 이상 노랑, 그 이하 초록

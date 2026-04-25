@@ -53,5 +53,8 @@ export const useAiServices = () => {
   const syncGemini = () =>
     api('/api/v1/scraper/gemini', { method: 'POST' })
 
-  return { list, get, create, update, remove, syncClaude, syncChatGPT, syncCodex, syncGemini }
+  const syncCursor = () =>
+    api('/api/v1/scraper/cursor', { method: 'POST' })
+
+  return { list, get, create, update, remove, syncClaude, syncChatGPT, syncCodex, syncGemini, syncCursor }
 }
