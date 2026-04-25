@@ -12,6 +12,7 @@ from app.adapter.mongodb.ai_service_repository import AIServiceRepository
 from app.adapter.scraper.claude_scraper import scrape_claude
 from app.adapter.scraper.chatgpt_scraper import scrape_chatgpt
 from app.adapter.scraper.codex_scraper import scrape_codex
+from app.adapter.scraper.gemini_scraper import scrape_gemini
 from app.core.dependencies import get_db
 
 router = APIRouter(prefix="/scraper", tags=["scraper"])
@@ -119,6 +120,37 @@ async def trigger_codex_scrape(db: AsyncIOMotorDatabase = Depends(get_db)):
             reset_iso = result.get('primary_reset_at', '')
             reset_label = _format_reset_label(reset_iso)
             update_data['usage_unit'] = f"% (5h 창{reset_label})"
+
+        if update_data:
+            await repo.update(service.id, update_data)
+
+    return result
+
+
+@router.post("/gemini")
+async def trigger_gemini_scrape(db: AsyncIOMotorDatabase = Depends(get_db)):
+    try:
+        result = await scrape_gemini()
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=f"{type(e).__name__}: {e}\n{traceback.format_exc()}")
+
+    if result.get('login_required'):
+        return {'login_required': True, 'message': '크롬에서 gemini.google.com 로그인이 필요합니다.'}
+
+    repo = AIServiceRepository(db)
+    service = await repo.find_by_name('Gemini')
+    if service:
+        update_data = {}
+
+        if result.get('plan_name'):
+            update_data['plan_name'] = result['plan_name']
+
+        billing_day = _parse_billing_day(result.get('next_billing_date'))
+        if billing_day:
+            update_data['billing_day'] = billing_day
+
+        if result.get('next_billing_date'):
+            update_data['next_billing_date'] = result['next_billing_date']
 
         if update_data:
             await repo.update(service.id, update_data)

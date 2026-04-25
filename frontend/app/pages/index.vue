@@ -4,7 +4,7 @@
 <script setup lang="ts">
 import type { AIService } from '~/composables/useAiServices'
 
-const { list, syncClaude, syncChatGPT, syncCodex } = useAiServices()
+const { list, syncClaude, syncChatGPT, syncCodex, syncGemini } = useAiServices()
 
 // 전체 AI 서비스 목록 로드 (DB에 저장된 마지막 데이터 즉시 표시)
 const { data: services, refresh } = await useAsyncData('ai-services', list)
@@ -27,6 +27,7 @@ type SyncStatus = 'idle' | 'syncing' | 'done' | 'login_required' | 'error'
 const claudeSyncStatus = ref<SyncStatus>('idle')
 const chatgptSyncStatus = ref<SyncStatus>('idle')
 const codexSyncStatus = ref<SyncStatus>('idle')
+const geminiSyncStatus = ref<SyncStatus>('idle')
 
 const runChatGPTSync = async () => {
   chatgptSyncStatus.value = 'syncing'
@@ -58,11 +59,26 @@ const runCodexSync = async () => {
   }
 }
 
+const runGeminiSync = async () => {
+  geminiSyncStatus.value = 'syncing'
+  try {
+    const result: any = await syncGemini()
+    if (result?.login_required) {
+      geminiSyncStatus.value = 'login_required'
+    } else {
+      await refresh()
+      geminiSyncStatus.value = 'done'
+    }
+  } catch {
+    geminiSyncStatus.value = 'error'
+  }
+}
+
 // 저장된 next_billing_date가 오늘 이하면 결제일이 지난 것 → 자동 갱신
-const isChatGPTBillingPast = () => {
-  const chatgpt = (services.value ?? []).find((s: AIService) => s.name === 'ChatGPT')
-  if (!chatgpt?.next_billing_date) return false
-  const nextBilling = new Date(chatgpt.next_billing_date)
+const isBillingPast = (name: string) => {
+  const service = (services.value ?? []).find((s: AIService) => s.name === name)
+  if (!service?.next_billing_date) return false
+  const nextBilling = new Date(service.next_billing_date)
   nextBilling.setHours(0, 0, 0, 0)
   const today = new Date()
   today.setHours(0, 0, 0, 0)
@@ -94,9 +110,12 @@ onMounted(async () => {
 
   await refresh()
 
-  // ChatGPT는 결제일이 지난 경우에만 자동 갱신 (그 외에는 수동 버튼)
-  if (isChatGPTBillingPast()) {
+  // ChatGPT, Gemini는 결제일이 지난 경우에만 자동 갱신 (그 외에는 수동 버튼)
+  if (isBillingPast('ChatGPT')) {
     await runChatGPTSync()
+  }
+  if (isBillingPast('Gemini')) {
+    await runGeminiSync()
   }
 })
 
@@ -134,6 +153,11 @@ const handleDeleted = async () => {
       <span v-else-if="codexSyncStatus === 'done'" class="sync-status done">Codex ✓</span>
       <span v-else-if="codexSyncStatus === 'login_required'" class="sync-status warn">Codex 로그인 필요</span>
       <span v-else-if="codexSyncStatus === 'error'" class="sync-status error">Codex 갱신 실패</span>
+
+      <span v-if="geminiSyncStatus === 'syncing'" class="sync-status syncing">Gemini 갱신 중...</span>
+      <span v-else-if="geminiSyncStatus === 'done'" class="sync-status done">Gemini ✓</span>
+      <span v-else-if="geminiSyncStatus === 'login_required'" class="sync-status warn">Gemini 로그인 필요</span>
+      <span v-else-if="geminiSyncStatus === 'error'" class="sync-status error">Gemini 갱신 실패</span>
     </div>
 
     <!-- 서비스 카드 목록 -->
@@ -142,9 +166,9 @@ const handleDeleted = async () => {
         v-for="service in services"
         :key="service.id"
         :service="service"
-        :sync-status="service.name === 'ChatGPT' ? chatgptSyncStatus : undefined"
+        :sync-status="service.name === 'ChatGPT' ? chatgptSyncStatus : service.name === 'Gemini' ? geminiSyncStatus : undefined"
         @deleted="handleDeleted"
-        @sync="runChatGPTSync"
+        @sync="service.name === 'ChatGPT' ? runChatGPTSync() : service.name === 'Gemini' ? runGeminiSync() : undefined"
       />
     </div>
 
