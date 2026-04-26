@@ -61,8 +61,12 @@ const models = await getAllModels()
 const priorModel = messages.value.find(m => m.role === 'assistant')?.model ?? ''
 const selectedModelId = ref(models.find(m => m.id === priorModel)?.id ?? models[0]?.id ?? '')
 const selectedModel = computed<AiModel | undefined>(() => models.find(m => m.id === selectedModelId.value))
-// jetbrains 임포트 대화(model=codex)는 여기서 이어쓸 수 없음
-const isReadOnly = ref(priorModel === 'codex')
+// 어시스턴트 메시지가 있는데 model이 null이면 JetBrains 임포트 대화 → read-only
+const isReadOnly = ref(
+  !isNew &&
+  messages.value.some(m => m.role === 'assistant') &&
+  priorModel === ''
+)
 
 const inputText = ref('')
 const isStreaming = ref(false)
@@ -168,7 +172,7 @@ const modelLabel = (m: AiModel) => {
       <select v-show="!isReadOnly" v-model="selectedModelId" class="model-select" :disabled="isStreaming || !!currentConvId">
         <option v-for="m in models" :key="m.id" :value="m.id">{{ modelLabel(m) }}</option>
       </select>
-      <span v-show="isReadOnly" class="readonly-label">JetBrains · {{ priorModel }}</span>
+      <span v-show="isReadOnly" class="readonly-label">JetBrains · Codex</span>
     </header>
 
     <div class="messages" ref="messagesEl">

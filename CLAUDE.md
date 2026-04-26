@@ -82,6 +82,14 @@ frontend/app/
 
 ---
 
+## Nuxt 4 SSR 주의사항
+
+- `<script setup>`에서 조건부로 composable 호출 금지 (`useAsyncData` 등을 ternary 안에서 호출하면 크래시)
+- 조건부 표시는 `v-if` 대신 `v-show` 사용 — `v-if`로 특정 구조를 제거하면 SSR 워커가 "IPC connection closed"로 죽는 경우 있음
+- `ref.value`는 if 조건 안에서도 타입이 좁혀지지 않음 → 로컬 변수로 추출 후 사용
+
+---
+
 ## 코드 품질 기준
 
 - 실무 수준 지향. 맛보기 수준 코드 금지
