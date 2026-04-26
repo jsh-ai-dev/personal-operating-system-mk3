@@ -1,3 +1,6 @@
+# [API] ChatGPT(OpenAI) 채팅 관련 HTTP 엔드포인트
+# /chat 접두사로 대화 목록 조회, 메시지 조회, 모델 목록, SSE 스트리밍 채팅을 제공
+
 from dataclasses import asdict
 
 from fastapi import APIRouter, Depends, HTTPException

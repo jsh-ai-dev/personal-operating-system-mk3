@@ -1,3 +1,6 @@
+# [서비스] OpenAI API 호출, 대화/메시지 저장, 비용 계산을 담당하는 채팅 비즈니스 로직
+# SSE(Server-Sent Events) 스트리밍으로 응답 청크를 실시간으로 프론트엔드에 전달
+
 import json
 from typing import AsyncGenerator
 

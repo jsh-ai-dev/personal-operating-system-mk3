@@ -1,3 +1,6 @@
+# [저장소] 대화(Conversation)와 메시지(Message)의 MongoDB CRUD 담당
+# Clean Architecture 어댑터 레이어 — 도메인 모델과 MongoDB 문서(dict) 간 변환 책임
+
 from datetime import datetime, timezone
 
 from bson import ObjectId

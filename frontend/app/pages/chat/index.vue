@@ -1,3 +1,5 @@
+<!-- [페이지] /chat — 전체 대화 목록 페이지. 각 항목 클릭 시 /chat/[id]로 이동 -->
+
 <script setup lang="ts">
 import type { Conversation } from '~/composables/useChat'
 

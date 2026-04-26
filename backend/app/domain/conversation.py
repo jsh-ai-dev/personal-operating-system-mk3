@@ -1,3 +1,6 @@
+# [도메인] 대화(Conversation)와 메시지(Message) 도메인 모델
+# 순수 Python 데이터 클래스 — DB/프레임워크 의존성 없이 비즈니스 개념만 정의
+
 from dataclasses import dataclass, field
 
 

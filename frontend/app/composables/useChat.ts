@@ -1,3 +1,6 @@
+// [컴포저블] 채팅 API 통신 로직을 컴포넌트로부터 분리한 재사용 함수 모음
+// SSE(Server-Sent Events) 스트리밍 파싱 포함 — 컴포넌트는 콜백만 넘기면 됨
+
 export interface Conversation {
   id: string
   provider: string

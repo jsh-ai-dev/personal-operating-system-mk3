@@ -1,3 +1,6 @@
+<!-- [레이아웃] 전체 앱의 루트 컴포넌트 — 좌측 사이드바 + 우측 콘텐츠 구조 -->
+<!-- NuxtPage가 현재 URL에 맞는 pages/ 하위 컴포넌트를 자동으로 렌더링 -->
+
 <template>
   <div class="layout">
     <NuxtRouteAnnouncer />

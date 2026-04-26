@@ -1,3 +1,6 @@
+<!-- [페이지] /chat/[id] — 채팅 화면. id가 'new'면 새 대화, 기존 ID면 이어서 대화 -->
+<!-- 첫 응답 수신 후 URL을 /chat/new → /chat/{실제ID}로 교체해 새로고침 시 대화가 유지됨 -->
+
 <script setup lang="ts">
 import type { Message, OpenAIModel } from '~/composables/useChat'
 
