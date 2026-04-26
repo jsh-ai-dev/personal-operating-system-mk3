@@ -3,9 +3,10 @@
 
 from fastapi import APIRouter
 
-from app.api.v1 import health, ai_services, scraper
+from app.api.v1 import health, ai_services, scraper, chat
 
 router = APIRouter()
 router.include_router(health.router)
 router.include_router(ai_services.router)
 router.include_router(scraper.router)
+router.include_router(chat.router)
