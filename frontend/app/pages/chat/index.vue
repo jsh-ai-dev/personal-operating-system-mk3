@@ -1,10 +1,30 @@
 <!-- [페이지] /chat — 전체 대화 목록 페이지. 각 항목 클릭 시 /chat/[id]로 이동 -->
 
 <script setup lang="ts">
-import type { Conversation } from '~/composables/useChat'
+const { listConversations, setHidden } = useChat()
 
-const { listConversations } = useChat()
-const { data: conversations } = await useAsyncData('conversations', listConversations)
+const showHidden = ref(false)
+const { data: conversations, refresh } = await useAsyncData(
+  'conversations',
+  () => listConversations(showHidden.value),
+)
+
+const toggleShowHidden = async () => {
+  showHidden.value = !showHidden.value
+  await refresh()
+}
+
+const hide = async (e: Event, id: string) => {
+  e.preventDefault()
+  await setHidden(id, true)
+  await refresh()
+}
+
+const unhide = async (e: Event, id: string) => {
+  e.preventDefault()
+  await setHidden(id, false)
+  await refresh()
+}
 
 const formatCost = (cost: number) =>
   cost === 0 ? '$0' : cost < 0.0001 ? '<$0.0001' : `$${cost.toFixed(4)}`
@@ -22,27 +42,31 @@ const providerLabel = (provider: string) =>
   <main>
     <header class="header">
       <h1>AI Chat</h1>
-      <NuxtLink to="/chat/new" class="btn-new">+ 새 대화</NuxtLink>
+      <div class="header-actions">
+        <button class="btn-toggle-hidden" :class="{ active: showHidden }" @click="toggleShowHidden">
+          {{ showHidden ? '숨김 숨기기' : '숨김 보기' }}
+        </button>
+        <NuxtLink to="/chat/new" class="btn-new">+ 새 대화</NuxtLink>
+      </div>
     </header>
 
     <div v-if="conversations?.length" class="list">
-      <NuxtLink
-        v-for="conv in conversations"
-        :key="conv.id"
-        :to="`/chat/${conv.id}`"
-        class="conv-item"
-      >
-        <div class="conv-meta">
-          <span class="badge" :class="conv.provider">{{ providerLabel(conv.provider) }}</span>
-          <span class="model">{{ conv.model }}</span>
-          <span class="cost">{{ formatCost(conv.total_cost_usd) }}</span>
-          <span class="tokens">{{ (conv.total_tokens_input + conv.total_tokens_output).toLocaleString() }} tokens</span>
-        </div>
-        <div class="conv-title">{{ conv.title }}</div>
-        <div class="conv-stats">
-          메시지 {{ conv.message_count }}개 · {{ formatDate(conv.updated_at) }}
-        </div>
-      </NuxtLink>
+      <div v-for="conv in conversations" :key="conv.id" class="conv-row">
+        <NuxtLink :to="`/chat/${conv.id}`" class="conv-item">
+          <div class="conv-meta">
+            <span class="badge" :class="conv.provider">{{ providerLabel(conv.provider) }}</span>
+            <span class="model">{{ conv.model }}</span>
+            <span class="cost">{{ formatCost(conv.total_cost_usd) }}</span>
+            <span class="tokens">{{ (conv.total_tokens_input + conv.total_tokens_output).toLocaleString() }} tokens</span>
+          </div>
+          <div class="conv-title">{{ conv.title }}</div>
+          <div class="conv-stats">
+            메시지 {{ conv.message_count }}개 · {{ formatDate(conv.updated_at) }}
+          </div>
+        </NuxtLink>
+        <button v-if="!conv.is_hidden" class="btn-hide" @click="hide($event, conv.id)" title="숨기기">✕</button>
+        <button v-else class="btn-unhide" @click="unhide($event, conv.id)" title="숨김 취소">↩</button>
+      </div>
     </div>
 
     <div v-else class="empty">
@@ -66,6 +90,7 @@ main {
   margin-bottom: 28px;
 }
 h1 { font-size: 1.3rem; margin: 0; }
+.header-actions { display: flex; align-items: center; gap: 8px; }
 .btn-new {
   padding: 6px 14px;
   border: 1px solid #6366f1;
@@ -75,8 +100,22 @@ h1 { font-size: 1.3rem; margin: 0; }
   font-size: 0.85rem;
 }
 .btn-new:hover { background: #eef2ff; }
+.btn-toggle-hidden {
+  padding: 6px 14px;
+  border: 1px solid #d1d5db;
+  border-radius: 6px;
+  background: none;
+  color: #6b7280;
+  font-family: monospace;
+  font-size: 0.85rem;
+  cursor: pointer;
+}
+.btn-toggle-hidden:hover { border-color: #9ca3af; color: #374151; }
+.btn-toggle-hidden.active { border-color: #6366f1; color: #6366f1; background: #eef2ff; }
 .list { display: flex; flex-direction: column; gap: 8px; }
+.conv-row { display: flex; align-items: stretch; gap: 6px; }
 .conv-item {
+  flex: 1;
   display: block;
   padding: 14px 16px;
   border: 1px solid #e5e7eb;
@@ -84,8 +123,35 @@ h1 { font-size: 1.3rem; margin: 0; }
   text-decoration: none;
   color: inherit;
   transition: border-color 0.15s;
+  min-width: 0;
 }
 .conv-item:hover { border-color: #6366f1; }
+.btn-hide {
+  flex-shrink: 0;
+  width: 32px;
+  background: none;
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  color: #d1d5db;
+  font-size: 0.75rem;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+.btn-hide:hover { border-color: #f87171; color: #f87171; background: #fef2f2; }
+.btn-unhide {
+  flex-shrink: 0;
+  width: 32px;
+  background: #eef2ff;
+  border: 1px solid #6366f1;
+  border-radius: 8px;
+  color: #6366f1;
+  font-size: 0.75rem;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+.btn-unhide:hover { background: #e0e7ff; }
+/* 숨긴 항목은 흐리게 표시 */
+.conv-row:has(.btn-unhide) .conv-item { opacity: 0.45; }
 .conv-meta {
   display: flex;
   align-items: center;

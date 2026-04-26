@@ -29,11 +29,20 @@ class ChatService:
         self.repo = repo
         self.openai = openai_client
 
-    async def list_conversations(self) -> list[Conversation]:
-        return await self.repo.find_all_conversations()
+    async def list_conversations(self, include_hidden: bool = False) -> list[Conversation]:
+        return await self.repo.find_all_conversations(include_hidden=include_hidden)
 
     async def get_messages(self, conversation_id: str) -> list[Message]:
         return await self.repo.find_messages_by_conversation(conversation_id)
+
+    async def set_hidden(self, conversation_id: str, is_hidden: bool) -> None:
+        await self.repo.set_hidden(conversation_id, is_hidden)
+
+    async def set_message_hidden(self, message_id: str, is_hidden: bool) -> None:
+        await self.repo.set_message_hidden(message_id, is_hidden)
+
+    async def update_message_content(self, message_id: str, content: str) -> None:
+        await self.repo.update_message_content(message_id, content)
 
     async def chat_openai_stream(
         self,

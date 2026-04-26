@@ -6,7 +6,46 @@ import type { Message, OpenAIModel } from '~/composables/useChat'
 
 const route = useRoute()
 const router = useRouter()
-const { getMessages, getOpenAIModels, chatOpenAI } = useChat()
+const { getMessages, getOpenAIModels, chatOpenAI, setMessageHidden, updateMessageContent } = useChat()
+
+const toggleMessageHidden = async (msg: Message) => {
+  if (msg.id.startsWith('temp-')) return
+  msg.is_hidden = !msg.is_hidden
+  await setMessageHidden(msg.id, msg.is_hidden)
+}
+
+const editingId = ref<string | null>(null)
+const editContent = ref('')
+
+const startEdit = (msg: Message) => {
+  editingId.value = msg.id
+  editContent.value = msg.content
+}
+
+const cancelEdit = () => {
+  editingId.value = null
+  editContent.value = ''
+}
+
+const saveEdit = async (msg: Message) => {
+  const trimmed = editContent.value.trim()
+  if (!trimmed || trimmed === msg.content) {
+    cancelEdit()
+    return
+  }
+  msg.content = trimmed
+  editingId.value = null
+  await updateMessageContent(msg.id, trimmed)
+}
+
+const handleEditKeydown = (e: KeyboardEvent, msg: Message) => {
+  if (e.key === 'Enter' && !e.shiftKey) {
+    e.preventDefault()
+    saveEdit(msg)
+  } else if (e.key === 'Escape') {
+    cancelEdit()
+  }
+}
 
 const isNew = route.params.id === 'new'
 const currentConvId = ref<string | null>(isNew ? null : route.params.id as string)
@@ -54,6 +93,7 @@ const sendMessage = async () => {
     tokens_output: null,
     cost_usd: null,
     created_at: new Date().toISOString(),
+    is_hidden: false,
   })
   await scrollToBottom()
 
@@ -74,6 +114,7 @@ const sendMessage = async () => {
         tokens_output: done.tokens_output,
         cost_usd: done.cost_usd,
         created_at: new Date().toISOString(),
+        is_hidden: false,
       })
       streamingContent.value = ''
 
@@ -130,12 +171,37 @@ const modelLabel = (id: string) => {
         v-for="msg in messages"
         :key="msg.id"
         class="message"
-        :class="msg.role"
+        :class="[msg.role, { hidden: msg.is_hidden }]"
       >
-        <div class="bubble">{{ msg.content }}</div>
-        <div v-if="msg.role === 'assistant' && msg.cost_usd != null" class="msg-meta">
-          {{ msg.tokens_input?.toLocaleString() }} in / {{ msg.tokens_output?.toLocaleString() }} out · {{ formatCost(msg.cost_usd) }}
-        </div>
+        <template v-if="msg.is_hidden">
+          <div class="bubble bubble-hidden" @click="toggleMessageHidden(msg)">숨긴 메시지 · 클릭해서 복원</div>
+        </template>
+        <template v-else-if="editingId === msg.id">
+          <div class="edit-wrap">
+            <textarea
+              v-model="editContent"
+              class="edit-input"
+              @keydown="handleEditKeydown($event, msg)"
+              autofocus
+            />
+            <div class="edit-actions">
+              <button class="btn-save" @click="saveEdit(msg)">저장</button>
+              <button class="btn-cancel" @click="cancelEdit">취소</button>
+            </div>
+          </div>
+        </template>
+        <template v-else>
+          <div class="bubble-wrap">
+            <div class="bubble">{{ msg.content }}</div>
+            <div v-if="!msg.id.startsWith('temp-')" class="msg-actions">
+              <button class="btn-msg-action" @click="startEdit(msg)" title="수정">✎</button>
+              <button class="btn-msg-action" @click="toggleMessageHidden(msg)" title="숨기기">✕</button>
+            </div>
+          </div>
+          <div v-if="msg.role === 'assistant' && msg.cost_usd != null" class="msg-meta">
+            {{ msg.tokens_input?.toLocaleString() }} in / {{ msg.tokens_output?.toLocaleString() }} out · {{ formatCost(msg.cost_usd) }}
+          </div>
+        </template>
       </div>
 
       <!-- 스트리밍 중인 어시스턴트 응답 -->
@@ -210,8 +276,10 @@ const modelLabel = (id: string) => {
 .message { display: flex; flex-direction: column; }
 .message.user { align-items: flex-end; }
 .message.assistant { align-items: flex-start; }
+.bubble-wrap { display: flex; align-items: flex-start; gap: 6px; max-width: 86%; }
+.message.user .bubble-wrap { flex-direction: row-reverse; }
 .bubble {
-  max-width: 80%;
+  max-width: 100%;
   padding: 10px 14px;
   border-radius: 12px;
   font-size: 0.9rem;
@@ -221,6 +289,77 @@ const modelLabel = (id: string) => {
 }
 .message.user .bubble { background: #6366f1; color: #fff; border-bottom-right-radius: 4px; }
 .message.assistant .bubble { background: #f3f4f6; color: #111; border-bottom-left-radius: 4px; }
+.bubble-hidden {
+  padding: 7px 14px;
+  border-radius: 12px;
+  font-size: 0.8rem;
+  color: #9ca3af;
+  border: 1px dashed #d1d5db;
+  cursor: pointer;
+  background: none;
+}
+.bubble-hidden:hover { border-color: #6366f1; color: #6366f1; }
+.msg-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-top: 10px;
+  opacity: 0;
+  transition: opacity 0.15s;
+}
+.bubble-wrap:hover .msg-actions { opacity: 1; }
+.btn-msg-action {
+  width: 22px;
+  height: 22px;
+  background: none;
+  border: 1px solid transparent;
+  border-radius: 50%;
+  color: #d1d5db;
+  font-size: 0.65rem;
+  cursor: pointer;
+  transition: all 0.15s;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.btn-msg-action:hover { border-color: #9ca3af; color: #6b7280; background: #f3f4f6; }
+.edit-wrap { display: flex; flex-direction: column; gap: 6px; width: 80%; }
+.message.user .edit-wrap { align-items: flex-end; }
+.edit-input {
+  width: 100%;
+  font-family: monospace;
+  font-size: 0.9rem;
+  line-height: 1.6;
+  padding: 10px 14px;
+  border: 1px solid #6366f1;
+  border-radius: 12px;
+  resize: vertical;
+  outline: none;
+  min-height: 80px;
+}
+.edit-actions { display: flex; gap: 6px; }
+.btn-save {
+  padding: 4px 12px;
+  background: #6366f1;
+  color: #fff;
+  border: none;
+  border-radius: 6px;
+  font-family: monospace;
+  font-size: 0.8rem;
+  cursor: pointer;
+}
+.btn-save:hover { background: #4f46e5; }
+.btn-cancel {
+  padding: 4px 12px;
+  background: none;
+  color: #6b7280;
+  border: 1px solid #d1d5db;
+  border-radius: 6px;
+  font-family: monospace;
+  font-size: 0.8rem;
+  cursor: pointer;
+}
+.btn-cancel:hover { border-color: #9ca3af; color: #374151; }
 .bubble.streaming { opacity: 0.85; }
 .bubble.typing { color: #9ca3af; letter-spacing: 4px; }
 .msg-meta { font-size: 0.7rem; color: #9ca3af; margin-top: 4px; padding: 0 2px; }

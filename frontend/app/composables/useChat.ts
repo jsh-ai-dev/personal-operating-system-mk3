@@ -14,6 +14,7 @@ export interface Conversation {
   total_cost_usd: number
   summary: string | null
   tags: string[]
+  is_hidden: boolean
 }
 
 export interface Message {
@@ -26,6 +27,7 @@ export interface Message {
   tokens_output: number | null
   cost_usd: number | null
   created_at: string
+  is_hidden: boolean
 }
 
 export interface OpenAIModel {
@@ -46,8 +48,19 @@ export const useChat = () => {
   const api = useApi()
   const config = useRuntimeConfig()
 
-  const listConversations = () =>
-    api<Conversation[]>('/api/v1/chat/conversations')
+  const listConversations = (includeHidden = false) =>
+    api<Conversation[]>('/api/v1/chat/conversations', {
+      query: includeHidden ? { include_hidden: true } : {},
+    })
+
+  const setHidden = (id: string, isHidden: boolean) =>
+    api(`/api/v1/chat/conversations/${id}`, { method: 'PATCH', body: { is_hidden: isHidden } })
+
+  const setMessageHidden = (id: string, isHidden: boolean) =>
+    api(`/api/v1/chat/messages/${id}`, { method: 'PATCH', body: { is_hidden: isHidden } })
+
+  const updateMessageContent = (id: string, content: string) =>
+    api(`/api/v1/chat/messages/${id}`, { method: 'PATCH', body: { content } })
 
   const getMessages = (conversationId: string) =>
     api<Message[]>(`/api/v1/chat/conversations/${conversationId}/messages`)
@@ -106,5 +119,5 @@ export const useChat = () => {
     }
   }
 
-  return { listConversations, getMessages, getOpenAIModels, chatOpenAI }
+  return { listConversations, getMessages, getOpenAIModels, chatOpenAI, setHidden, setMessageHidden, updateMessageContent }
 }

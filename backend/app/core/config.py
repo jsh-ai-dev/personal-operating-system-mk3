@@ -24,6 +24,10 @@ class Settings(BaseSettings):
     # CORS 허용 출처 목록 (프론트엔드 주소를 추가해야 브라우저에서 API 호출 가능)
     cors_origins: list[str] = ["http://localhost:3003"]
 
+    # JetBrains AI Assistant 세션 히스토리 경로 (B 방식 임포트용)
+    # IDE 버전이 바뀌면 경로도 바뀌니 .env에서 재정의 가능
+    jetbrains_aia_path: str = r"C:\Users\USER\AppData\Roaming\JetBrains\IntelliJIdea2026.1\aia-task-history"
+
 
 # 모듈 로드 시 한 번만 생성 — 앱 전체에서 이 인스턴스를 임포트해 공유
 settings = Settings()

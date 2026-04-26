@@ -33,6 +33,8 @@ class ConversationRepository:
             summary=doc.get("summary"),
             tags=doc.get("tags", []),
             qdrant_id=doc.get("qdrant_id"),
+            source_id=doc.get("source_id"),
+            is_hidden=doc.get("is_hidden", False),
         )
 
     def _to_message(self, doc: dict) -> Message:
@@ -50,11 +52,23 @@ class ConversationRepository:
             cost_usd=doc.get("cost_usd"),
             created_at=iso(doc["created_at"]),
             qdrant_id=doc.get("qdrant_id"),
+            is_hidden=doc.get("is_hidden", False),
         )
 
-    async def find_all_conversations(self) -> list[Conversation]:
-        docs = await self.conversations.find().sort("updated_at", -1).to_list(None)
+    async def find_all_conversations(self, include_hidden: bool = False) -> list[Conversation]:
+        # is_hidden이 True인 문서는 기본적으로 제외 (없는 필드도 False로 처리)
+        query = {} if include_hidden else {"is_hidden": {"$ne": True}}
+        docs = await self.conversations.find(query).sort("updated_at", -1).to_list(None)
         return [self._to_conversation(doc) for doc in docs]
+
+    async def set_hidden(self, id: str, is_hidden: bool) -> None:
+        try:
+            await self.conversations.update_one(
+                {"_id": ObjectId(id)},
+                {"$set": {"is_hidden": is_hidden, "updated_at": datetime.now(timezone.utc)}},
+            )
+        except InvalidId:
+            pass
 
     async def find_conversation_by_id(self, id: str) -> Conversation | None:
         try:
@@ -63,7 +77,9 @@ class ConversationRepository:
             return None
         return self._to_conversation(doc) if doc else None
 
-    async def create_conversation(self, provider: str, model: str, title: str) -> Conversation:
+    async def create_conversation(
+        self, provider: str, model: str, title: str, source_id: str | None = None
+    ) -> Conversation:
         now = datetime.now(timezone.utc)
         result = await self.conversations.insert_one({
             "provider": provider,
@@ -78,8 +94,40 @@ class ConversationRepository:
             "summary": None,
             "tags": [],
             "qdrant_id": None,
+            "source_id": source_id,
         })
         return await self.find_conversation_by_id(str(result.inserted_id))
+
+    async def find_conversation_by_source_id(self, source_id: str) -> Conversation | None:
+        doc = await self.conversations.find_one({"source_id": source_id})
+        return self._to_conversation(doc) if doc else None
+
+    async def set_message_hidden(self, message_id: str, is_hidden: bool) -> None:
+        try:
+            await self.messages.update_one(
+                {"_id": ObjectId(message_id)},
+                {"$set": {"is_hidden": is_hidden}},
+            )
+        except InvalidId:
+            pass
+
+    async def update_message_content(self, message_id: str, content: str) -> None:
+        try:
+            await self.messages.update_one(
+                {"_id": ObjectId(message_id)},
+                {"$set": {"content": content}},
+            )
+        except InvalidId:
+            pass
+
+    async def set_message_count(self, id: str, count: int) -> None:
+        try:
+            await self.conversations.update_one(
+                {"_id": ObjectId(id)},
+                {"$set": {"message_count": count, "updated_at": datetime.now(timezone.utc)}},
+            )
+        except InvalidId:
+            pass
 
     async def update_conversation_stats(
         self, id: str, tokens_input: int, tokens_output: int, cost_usd: float

@@ -102,6 +102,36 @@ frontend/app/
 
 ---
 
+## 진행 중인 작업: AI Chat 기능
+
+### 개요
+여러 AI 서비스의 요청/응답을 한 곳에 저장하고, 이후 요약/검색/퀴즈화하는 기능.
+오늘은 데이터 수집(Method A/B) 구현이 목표. 나중에 Qdrant 기반 의미 검색, 요약, 퀴즈 추가 예정.
+
+### 대상 서비스
+ChatGPT(OpenAI), Gemini(Google), Claude(Anthropic) 계열
+
+### Method A — API 프록시 방식
+- 이 앱이 각 AI API를 직접 호출하는 프록시 역할
+- 요청/응답 + 토큰/비용을 MongoDB에 저장
+- **ChatGPT A 방식 구현 완료** (마지막 커밋: SSE 스트리밍 채팅 + 비용 계산)
+
+### Method B — 구독 서비스 데이터 수집 방식
+- 일반 사용자(API 아닌 구독형)의 기존 대화 내역 수집
+- 완벽 동작보다 "어디까지 가능한가" 탐색이 목적
+- **ChatGPT B 방식 구현 예정 (현재 작업)**
+- 구현 순서: CDP 인터셉트 PoC → 공식 Export(JSON) 임포트 → 브라우저 확장 고려
+  - CDP: `api.openai.com/backend-api/conversation/{id}` 응답 인터셉트
+  - Export: ChatGPT Settings → Export Data → JSON 파일 임포트
+
+### 이후 비용 절감 기능 (A 방식 추가 예정)
+- Semantic Cache (Qdrant 유사도 검색으로 캐시 응답)
+- Prompt Caching (Claude cache_control / GPT prefix caching)
+- 모델 라우팅 (질문 복잡도에 따라 저렴한 모델 선택)
+- 컨텍스트 압축 (히스토리 요약 후 전송)
+
+---
+
 ## 사용자 배경
 
 6년차 백엔드 개발자. Python/FastAPI/Vue/Nuxt/AI/Docker 등은 처음 접함.

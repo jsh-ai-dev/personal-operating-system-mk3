@@ -28,10 +28,38 @@ class OpenAIChatRequest(BaseModel):
     message: str
 
 
+class UpdateConversationRequest(BaseModel):
+    is_hidden: bool
+
+
+class UpdateMessageRequest(BaseModel):
+    is_hidden: bool | None = None
+    content: str | None = None
+
+
 @router.get("/conversations")
-async def list_conversations(svc: ChatService = Depends(_get_svc)):
-    convs = await svc.list_conversations()
+async def list_conversations(include_hidden: bool = False, svc: ChatService = Depends(_get_svc)):
+    convs = await svc.list_conversations(include_hidden=include_hidden)
     return [asdict(c) for c in convs]
+
+
+@router.patch("/conversations/{id}")
+async def update_conversation(
+    id: str, body: UpdateConversationRequest, svc: ChatService = Depends(_get_svc)
+):
+    await svc.set_hidden(id, body.is_hidden)
+    return {"ok": True}
+
+
+@router.patch("/messages/{id}")
+async def update_message(
+    id: str, body: UpdateMessageRequest, svc: ChatService = Depends(_get_svc)
+):
+    if body.is_hidden is not None:
+        await svc.set_message_hidden(id, body.is_hidden)
+    if body.content is not None:
+        await svc.update_message_content(id, body.content)
+    return {"ok": True}
 
 
 @router.get("/conversations/{id}/messages")
