@@ -2,11 +2,11 @@
 <!-- 첫 응답 수신 후 URL을 /chat/new → /chat/{실제ID}로 교체해 새로고침 시 대화가 유지됨 -->
 
 <script setup lang="ts">
-import type { Message, OpenAIModel } from '~/composables/useChat'
+import type { AiModel, Message } from '~/composables/useChat'
 
 const route = useRoute()
 const router = useRouter()
-const { getMessages, getOpenAIModels, chatOpenAI, setMessageHidden, updateMessageContent } = useChat()
+const { getMessages, getAllModels, chatOpenAI, chatGemini, setMessageHidden, updateMessageContent } = useChat()
 
 const toggleMessageHidden = async (msg: Message) => {
   if (msg.id.startsWith('temp-')) return
@@ -56,8 +56,13 @@ if (!isNew && currentConvId.value) {
   messages.value = await getMessages(currentConvId.value)
 }
 
-const models = await getOpenAIModels()
-const selectedModel = ref(models[0]?.id ?? 'gpt-5-nano') // 가격순 정렬된 목록의 첫 번째 = 최저가
+const models = await getAllModels()
+// 기존 대화면 어시스턴트 메시지에서 모델 추론, 없으면 목록 첫 번째
+const priorModel = messages.value.find(m => m.role === 'assistant')?.model ?? ''
+const selectedModelId = ref(models.find(m => m.id === priorModel)?.id ?? models[0]?.id ?? '')
+const selectedModel = computed<AiModel | undefined>(() => models.find(m => m.id === selectedModelId.value))
+// jetbrains 임포트 대화(model=codex)는 여기서 이어쓸 수 없음
+const isReadOnly = ref(priorModel === 'codex')
 
 const inputText = ref('')
 const isStreaming = ref(false)
@@ -97,8 +102,10 @@ const sendMessage = async () => {
   })
   await scrollToBottom()
 
-  await chatOpenAI(
-    { conversationId: currentConvId.value, model: selectedModel.value, message: text },
+  const model = selectedModel.value
+  const chatFn = model?.provider === 'gemini' ? chatGemini : chatOpenAI
+  await chatFn(
+    { conversationId: currentConvId.value, model: model?.id ?? '', message: text },
     async (chunk) => {
       streamingContent.value += chunk
       await scrollToBottom()
@@ -109,7 +116,7 @@ const sendMessage = async () => {
         conversation_id: done.conversation_id,
         role: 'assistant',
         content: streamingContent.value,
-        model: selectedModel.value,
+        model: model?.id ?? null,
         tokens_input: done.tokens_input,
         tokens_output: done.tokens_output,
         cost_usd: done.cost_usd,
@@ -146,10 +153,11 @@ const formatCost = (cost: number | null) => {
   return `$${cost.toFixed(4)}`
 }
 
-const modelLabel = (id: string) => {
-  const m = models.find(m => m.id === id)
-  if (!m) return id
-  return `${id} ($${m.input_per_1m}/$${m.output_per_1m} per 1M)`
+const modelLabel = (m: AiModel) => {
+  const prefix = `[${m.provider === 'gemini' ? 'Gemini' : 'OpenAI'}] ${m.id}`
+  if (m.provider === 'gemini' && m.rpm != null)
+    return `${prefix} (${m.rpm}/min · ${m.rpd?.toLocaleString()}/day)`
+  return `${prefix} ($${m.input_per_1m}/$${m.output_per_1m} per 1M)`
 }
 </script>
 
@@ -157,9 +165,10 @@ const modelLabel = (id: string) => {
   <div class="page">
     <header class="header">
       <NuxtLink to="/chat" class="back">← 목록으로</NuxtLink>
-      <select v-model="selectedModel" class="model-select" :disabled="isStreaming || !!currentConvId">
-        <option v-for="m in models" :key="m.id" :value="m.id">{{ modelLabel(m.id) }}</option>
+      <select v-show="!isReadOnly" v-model="selectedModelId" class="model-select" :disabled="isStreaming || !!currentConvId">
+        <option v-for="m in models" :key="m.id" :value="m.id">{{ modelLabel(m) }}</option>
       </select>
+      <span v-show="isReadOnly" class="readonly-label">JetBrains · {{ priorModel }}</span>
     </header>
 
     <div class="messages" ref="messagesEl">
@@ -215,7 +224,7 @@ const modelLabel = (id: string) => {
 
     <div v-if="errorMessage" class="error">{{ errorMessage }}</div>
 
-    <div class="input-area">
+    <div v-show="!isReadOnly" class="input-area">
       <textarea
         v-model="inputText"
         class="input"
@@ -264,6 +273,7 @@ const modelLabel = (id: string) => {
   min-width: 0;
 }
 .model-select:disabled { opacity: 0.5; cursor: default; }
+.readonly-label { font-size: 0.8rem; color: #9ca3af; }
 .messages {
   flex: 1;
   overflow-y: auto;

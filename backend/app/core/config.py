@@ -20,6 +20,7 @@ class Settings(BaseSettings):
 
     # AI API 키
     openai_api_key: str | None = None
+    gemini_api_key: str | None = None
 
     # CORS 허용 출처 목록 (프론트엔드 주소를 추가해야 브라우저에서 API 호출 가능)
     cors_origins: list[str] = ["http://localhost:3003"]

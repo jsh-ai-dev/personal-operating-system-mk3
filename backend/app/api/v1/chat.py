@@ -10,7 +10,7 @@ from openai import AsyncOpenAI
 from pydantic import BaseModel
 
 from app.adapter.mongodb.conversation_repository import ConversationRepository
-from app.application.chat_service import OPENAI_PRICING, ChatService
+from app.application.chat_service import GEMINI_LIMITS, GEMINI_PRICING, OPENAI_PRICING, ChatService
 from app.core.config import settings
 from app.core.dependencies import get_db
 
@@ -25,6 +25,12 @@ def _get_svc(db: AsyncIOMotorDatabase = Depends(get_db)) -> ChatService:
 class OpenAIChatRequest(BaseModel):
     conversation_id: str | None = None
     model: str = "gpt-4o-mini"
+    message: str
+
+
+class GeminiChatRequest(BaseModel):
+    conversation_id: str | None = None
+    model: str = "gemini-2.0-flash"
     message: str
 
 
@@ -62,10 +68,43 @@ async def update_message(
     return {"ok": True}
 
 
+@router.get("/conversations/{id}")
+async def get_conversation(id: str, svc: ChatService = Depends(_get_svc)):
+    conv = await svc.repo.find_conversation_by_id(id)
+    if not conv:
+        raise HTTPException(status_code=404, detail="대화를 찾을 수 없습니다")
+    return asdict(conv)
+
+
 @router.get("/conversations/{id}/messages")
 async def get_messages(id: str, svc: ChatService = Depends(_get_svc)):
     msgs = await svc.get_messages(id)
     return [asdict(m) for m in msgs]
+
+
+@router.get("/gemini/models")
+async def get_gemini_models():
+    # pricing 대신 rate limit 반환 (무료 티어 사용 중)
+    return [
+        {"id": model_id, "rpm": l["rpm"], "rpd": l["rpd"], "tpm": l["tpm"]}
+        for model_id, l in GEMINI_LIMITS.items()
+    ]
+
+
+@router.post("/gemini")
+async def chat_gemini(body: GeminiChatRequest, svc: ChatService = Depends(_get_svc)):
+    if body.model not in GEMINI_PRICING:
+        raise HTTPException(status_code=400, detail=f"지원하지 않는 모델: {body.model}")
+    if not settings.gemini_api_key:
+        raise HTTPException(status_code=500, detail="GEMINI_API_KEY가 설정되지 않았습니다")
+    if not body.message.strip():
+        raise HTTPException(status_code=400, detail="메시지를 입력해주세요")
+
+    return StreamingResponse(
+        svc.chat_gemini_stream(body.conversation_id, body.model, body.message, settings.gemini_api_key),
+        media_type="text/event-stream",
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+    )
 
 
 @router.get("/openai/models")

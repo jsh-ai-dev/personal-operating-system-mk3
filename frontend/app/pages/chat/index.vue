@@ -1,13 +1,34 @@
 <!-- [페이지] /chat — 전체 대화 목록 페이지. 각 항목 클릭 시 /chat/[id]로 이동 -->
 
 <script setup lang="ts">
-const { listConversations, setHidden } = useChat()
+const { listConversations, setHidden, importJetbrainsCodex } = useChat()
 
+// refresh는 runImport에서 참조하므로 먼저 선언
 const showHidden = ref(false)
 const { data: conversations, refresh } = await useAsyncData(
   'conversations',
   () => listConversations(showHidden.value),
 )
+
+const importing = ref(false)
+const importResult = ref('')
+
+const runImport = async () => {
+  importing.value = true
+  importResult.value = ''
+  try {
+    const result = await importJetbrainsCodex()
+    importResult.value = result.imported > 0
+      ? `${result.imported}개 가져옴`
+      : '이미 최신 상태'
+    if (result.imported > 0) await refresh()
+  } catch (e) {
+    importResult.value = '오류 발생'
+  } finally {
+    importing.value = false
+    setTimeout(() => { importResult.value = '' }, 3000)
+  }
+}
 
 const toggleShowHidden = async () => {
   showHidden.value = !showHidden.value
@@ -35,7 +56,7 @@ const formatDate = (iso: string) =>
   })
 
 const providerLabel = (provider: string) =>
-  ({ openai: 'OpenAI', anthropic: 'Anthropic', google: 'Google' })[provider] ?? provider
+  ({ openai: 'OpenAI', anthropic: 'Anthropic', google: 'Google', gemini: 'Gemini', jetbrains: 'JetBrains' })[provider] ?? provider
 </script>
 
 <template>
@@ -46,6 +67,10 @@ const providerLabel = (provider: string) =>
         <button class="btn-toggle-hidden" :class="{ active: showHidden }" @click="toggleShowHidden">
           {{ showHidden ? '숨김 숨기기' : '숨김 보기' }}
         </button>
+        <button class="btn-import" :disabled="importing" @click="runImport">
+          {{ importing ? '가져오는 중…' : 'Codex 가져오기' }}
+        </button>
+        <span v-if="importResult" class="import-result">{{ importResult }}</span>
         <NuxtLink to="/chat/new" class="btn-new">+ 새 대화</NuxtLink>
       </div>
     </header>
@@ -112,6 +137,19 @@ h1 { font-size: 1.3rem; margin: 0; }
 }
 .btn-toggle-hidden:hover { border-color: #9ca3af; color: #374151; }
 .btn-toggle-hidden.active { border-color: #6366f1; color: #6366f1; background: #eef2ff; }
+.btn-import {
+  padding: 6px 14px;
+  border: 1px solid #d1d5db;
+  border-radius: 6px;
+  background: none;
+  color: #6b7280;
+  font-family: monospace;
+  font-size: 0.85rem;
+  cursor: pointer;
+}
+.btn-import:hover:not(:disabled) { border-color: #9ca3af; color: #374151; }
+.btn-import:disabled { opacity: 0.5; cursor: default; }
+.import-result { font-size: 0.8rem; color: #059669; }
 .list { display: flex; flex-direction: column; gap: 8px; }
 .conv-row { display: flex; align-items: stretch; gap: 6px; }
 .conv-item {

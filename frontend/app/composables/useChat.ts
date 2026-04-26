@@ -30,10 +30,16 @@ export interface Message {
   is_hidden: boolean
 }
 
-export interface OpenAIModel {
+export interface AiModel {
   id: string
-  input_per_1m: number
-  output_per_1m: number
+  provider: 'openai' | 'gemini'
+  // OpenAI: 가격 기반
+  input_per_1m?: number
+  output_per_1m?: number
+  // Gemini 무료 티어: rate limit 기반
+  rpm?: number
+  rpd?: number
+  tpm?: number
 }
 
 export interface ChatDoneEvent {
@@ -53,6 +59,9 @@ export const useChat = () => {
       query: includeHidden ? { include_hidden: true } : {},
     })
 
+  const importJetbrainsCodex = () =>
+    api<{ imported: number; skipped: number; total: number }>('/api/v1/import/jetbrains-codex', { method: 'POST' })
+
   const setHidden = (id: string, isHidden: boolean) =>
     api(`/api/v1/chat/conversations/${id}`, { method: 'PATCH', body: { is_hidden: isHidden } })
 
@@ -62,19 +71,33 @@ export const useChat = () => {
   const updateMessageContent = (id: string, content: string) =>
     api(`/api/v1/chat/messages/${id}`, { method: 'PATCH', body: { content } })
 
+  const getConversation = (id: string) =>
+    api<Conversation>(`/api/v1/chat/conversations/${id}`)
+
   const getMessages = (conversationId: string) =>
     api<Message[]>(`/api/v1/chat/conversations/${conversationId}/messages`)
 
-  const getOpenAIModels = () =>
-    api<OpenAIModel[]>('/api/v1/chat/openai/models')
+  const getAllModels = async (): Promise<AiModel[]> => {
+    let openai: Array<{ id: string; input_per_1m: number; output_per_1m: number }> = []
+    let gemini: Array<{ id: string; rpm: number; rpd: number; tpm: number }> = []
+    try { openai = await api('/api/v1/chat/openai/models') } catch (_) {}
+    try { gemini = await api('/api/v1/chat/gemini/models') } catch (_) {}
 
-  const chatOpenAI = async (
+    return [
+      ...openai.map((m): AiModel => ({ ...m, provider: 'openai' })),
+      ...gemini.map((m): AiModel => ({ ...m, provider: 'gemini' })),
+    ]
+  }
+
+  // SSE 스트리밍 공통 처리 — endpoint만 다르고 포맷은 동일
+  const _streamChat = async (
+    endpoint: string,
     params: { conversationId: string | null; model: string; message: string },
     onChunk: (content: string) => void,
     onDone: (data: ChatDoneEvent) => void,
     onError: (message: string) => void,
   ) => {
-    const response = await fetch(`${config.public.apiBase}/api/v1/chat/openai`, {
+    const response = await fetch(`${config.public.apiBase}${endpoint}`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -119,5 +142,19 @@ export const useChat = () => {
     }
   }
 
-  return { listConversations, getMessages, getOpenAIModels, chatOpenAI, setHidden, setMessageHidden, updateMessageContent }
+  const chatOpenAI = (
+    params: { conversationId: string | null; model: string; message: string },
+    onChunk: (content: string) => void,
+    onDone: (data: ChatDoneEvent) => void,
+    onError: (message: string) => void,
+  ) => _streamChat('/api/v1/chat/openai', params, onChunk, onDone, onError)
+
+  const chatGemini = (
+    params: { conversationId: string | null; model: string; message: string },
+    onChunk: (content: string) => void,
+    onDone: (data: ChatDoneEvent) => void,
+    onError: (message: string) => void,
+  ) => _streamChat('/api/v1/chat/gemini', params, onChunk, onDone, onError)
+
+  return { listConversations, getConversation, getMessages, getAllModels, chatOpenAI, chatGemini, importJetbrainsCodex, setHidden, setMessageHidden, updateMessageContent }
 }
