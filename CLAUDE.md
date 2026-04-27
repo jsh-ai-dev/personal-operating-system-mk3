@@ -119,18 +119,16 @@ frontend/app/
 ### 대상 서비스
 ChatGPT(OpenAI), Gemini(Google), Claude(Anthropic) 계열
 
-### Method A — API 프록시 방식
+### API 프록시 방식 (직접 호출)
 - 이 앱이 각 AI API를 직접 호출하는 프록시 역할
 - 요청/응답 + 토큰/비용을 MongoDB에 저장
-- **ChatGPT A 방식 구현 완료** (마지막 커밋: SSE 스트리밍 채팅 + 비용 계산)
+- **ChatGPT(OpenAI) 구현 완료** — SSE 스트리밍, 비용 계산
+- **Gemini 구현 완료** — 무료 티어 6종 모델, rate limit 표시
 
-### Method B — 구독 서비스 데이터 수집 방식
+### 구독 서비스 대화 임포트
 - 일반 사용자(API 아닌 구독형)의 기존 대화 내역 수집
-- 완벽 동작보다 "어디까지 가능한가" 탐색이 목적
-- **ChatGPT B 방식 구현 예정 (현재 작업)**
-- 구현 순서: CDP 인터셉트 PoC → 공식 Export(JSON) 임포트 → 브라우저 확장 고려
-  - CDP: `api.openai.com/backend-api/conversation/{id}` 응답 인터셉트
-  - Export: ChatGPT Settings → Export Data → JSON 파일 임포트
+- **JetBrains Codex 임포트 완료** — `aia-task-history/*.events` 파싱
+- **ChatGPT Export 임포트 예정** — Settings → Export Data → JSON (이메일 대기 중)
 
 ### 이후 비용 절감 기능 (A 방식 추가 예정)
 - Semantic Cache (Qdrant 유사도 검색으로 캐시 응답)

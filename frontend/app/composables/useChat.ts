@@ -62,6 +62,9 @@ export const useChat = () => {
   const importJetbrainsCodex = () =>
     api<{ imported: number; skipped: number; total: number }>('/api/v1/import/jetbrains-codex', { method: 'POST' })
 
+  const importGeminiTakeout = () =>
+    api<{ imported: number; skipped: number; total: number }>('/api/v1/import/gemini-takeout', { method: 'POST' })
+
   const setHidden = (id: string, isHidden: boolean) =>
     api(`/api/v1/chat/conversations/${id}`, { method: 'PATCH', body: { is_hidden: isHidden } })
 
@@ -156,5 +159,5 @@ export const useChat = () => {
     onError: (message: string) => void,
   ) => _streamChat('/api/v1/chat/gemini', params, onChunk, onDone, onError)
 
-  return { listConversations, getConversation, getMessages, getAllModels, chatOpenAI, chatGemini, importJetbrainsCodex, setHidden, setMessageHidden, updateMessageContent }
+  return { listConversations, getConversation, getMessages, getAllModels, chatOpenAI, chatGemini, importJetbrainsCodex, importGeminiTakeout, setHidden, setMessageHidden, updateMessageContent }
 }

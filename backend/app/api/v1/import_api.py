@@ -19,3 +19,8 @@ def _get_svc(db: AsyncIOMotorDatabase = Depends(get_db)) -> ImportService:
 @router.post("/jetbrains-codex")
 async def import_jetbrains_codex(svc: ImportService = Depends(_get_svc)):
     return await svc.import_jetbrains_codex(settings.jetbrains_aia_path)
+
+
+@router.post("/gemini-takeout")
+async def import_gemini_takeout(svc: ImportService = Depends(_get_svc)):
+    return await svc.import_gemini_takeout(settings.gemini_takeout_path)

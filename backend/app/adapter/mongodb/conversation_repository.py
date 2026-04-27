@@ -165,8 +165,9 @@ class ConversationRepository:
         tokens_input: int | None = None,
         tokens_output: int | None = None,
         cost_usd: float | None = None,
+        created_at: datetime | None = None,  # 임포트 시 원본 타임스탬프 보존용
     ) -> Message:
-        now = datetime.now(timezone.utc)
+        now = created_at or datetime.now(timezone.utc)
         result = await self.messages.insert_one({
             "conversation_id": ObjectId(conversation_id),
             "role": role,

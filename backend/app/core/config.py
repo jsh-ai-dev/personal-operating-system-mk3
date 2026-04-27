@@ -29,6 +29,9 @@ class Settings(BaseSettings):
     # IDE 버전이 바뀌면 경로도 바뀌니 .env에서 재정의 가능
     jetbrains_aia_path: str = r"C:\Users\USER\AppData\Roaming\JetBrains\IntelliJIdea2026.1\aia-task-history"
 
+    # Google Takeout 내활동.json 경로 (Gemini 대화 임포트용)
+    gemini_takeout_path: str = r"data\gemini\내활동.json"
+
 
 # 모듈 로드 시 한 번만 생성 — 앱 전체에서 이 인스턴스를 임포트해 공유
 settings = Settings()

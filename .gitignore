@@ -229,3 +229,6 @@ desktop.ini
 
 # Playwright 디버그 스크린샷
 backend/debug/
+
+# 개인 대화 내보내기 데이터
+backend/data/

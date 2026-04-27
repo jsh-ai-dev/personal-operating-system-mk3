@@ -1,7 +1,7 @@
 <!-- [페이지] /chat — 전체 대화 목록 페이지. 각 항목 클릭 시 /chat/[id]로 이동 -->
 
 <script setup lang="ts">
-const { listConversations, setHidden, importJetbrainsCodex } = useChat()
+const { listConversations, setHidden, importJetbrainsCodex, importGeminiTakeout } = useChat()
 
 // refresh는 runImport에서 참조하므로 먼저 선언
 const showHidden = ref(false)
@@ -10,25 +10,27 @@ const { data: conversations, refresh } = await useAsyncData(
   () => listConversations(showHidden.value),
 )
 
-const importing = ref(false)
+const importingCodex = ref(false)
+const importingGemini = ref(false)
 const importResult = ref('')
 
-const runImport = async () => {
-  importing.value = true
+const _runImport = async (fn: () => Promise<{ imported: number; skipped: number; total: number }>, setLoading: (v: boolean) => void) => {
+  setLoading(true)
   importResult.value = ''
   try {
-    const result = await importJetbrainsCodex()
-    importResult.value = result.imported > 0
-      ? `${result.imported}개 가져옴`
-      : '이미 최신 상태'
+    const result = await fn()
+    importResult.value = result.imported > 0 ? `${result.imported}개 가져옴` : '이미 최신 상태'
     if (result.imported > 0) await refresh()
   } catch (e) {
     importResult.value = '오류 발생'
   } finally {
-    importing.value = false
+    setLoading(false)
     setTimeout(() => { importResult.value = '' }, 3000)
   }
 }
+
+const runImportCodex = () => _runImport(importJetbrainsCodex, v => { importingCodex.value = v })
+const runImportGemini = () => _runImport(importGeminiTakeout, v => { importingGemini.value = v })
 
 const toggleShowHidden = async () => {
   showHidden.value = !showHidden.value
@@ -67,8 +69,11 @@ const providerLabel = (provider: string) =>
         <button class="btn-toggle-hidden" :class="{ active: showHidden }" @click="toggleShowHidden">
           {{ showHidden ? '숨김 숨기기' : '숨김 보기' }}
         </button>
-        <button class="btn-import" :disabled="importing" @click="runImport">
-          {{ importing ? '가져오는 중…' : 'Codex 가져오기' }}
+        <button class="btn-import" :disabled="importingCodex || importingGemini" @click="runImportCodex">
+          {{ importingCodex ? '가져오는 중…' : 'Codex 가져오기' }}
+        </button>
+        <button class="btn-import" :disabled="importingCodex || importingGemini" @click="runImportGemini">
+          {{ importingGemini ? '가져오는 중…' : 'Gemini 가져오기' }}
         </button>
         <span v-if="importResult" class="import-result">{{ importResult }}</span>
         <NuxtLink to="/chat/new" class="btn-new">+ 새 대화</NuxtLink>
