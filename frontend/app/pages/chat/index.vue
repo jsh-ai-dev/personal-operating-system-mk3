@@ -1,7 +1,7 @@
 <!-- [페이지] /chat — 전체 대화 목록 페이지. 각 항목 클릭 시 /chat/[id]로 이동 -->
 
 <script setup lang="ts">
-const { listConversations, setHidden, importJetbrainsCodex, importGeminiTakeout } = useChat()
+const { listConversations, setHidden, importJetbrainsCodex, importGeminiTakeout, importClaudeExport, importClaudeCode } = useChat()
 
 // refresh는 runImport에서 참조하므로 먼저 선언
 const showHidden = ref(false)
@@ -12,6 +12,8 @@ const { data: conversations, refresh } = await useAsyncData(
 
 const importingCodex = ref(false)
 const importingGemini = ref(false)
+const importingClaude = ref(false)
+const importingClaudeCode = ref(false)
 const importResult = ref('')
 
 const _runImport = async (fn: () => Promise<{ imported: number; skipped: number; total: number }>, setLoading: (v: boolean) => void) => {
@@ -31,6 +33,8 @@ const _runImport = async (fn: () => Promise<{ imported: number; skipped: number;
 
 const runImportCodex = () => _runImport(importJetbrainsCodex, v => { importingCodex.value = v })
 const runImportGemini = () => _runImport(importGeminiTakeout, v => { importingGemini.value = v })
+const runImportClaude = () => _runImport(importClaudeExport, v => { importingClaude.value = v })
+const runImportClaudeCode = () => _runImport(importClaudeCode, v => { importingClaudeCode.value = v })
 
 const toggleShowHidden = async () => {
   showHidden.value = !showHidden.value
@@ -69,10 +73,16 @@ const providerLabel = (provider: string) =>
         <button class="btn-toggle-hidden" :class="{ active: showHidden }" @click="toggleShowHidden">
           {{ showHidden ? '숨김 숨기기' : '숨김 보기' }}
         </button>
-        <button class="btn-import" :disabled="importingCodex || importingGemini" @click="runImportCodex">
+        <button class="btn-import" :disabled="importingCodex || importingGemini || importingClaude || importingClaudeCode" @click="runImportCodex">
           {{ importingCodex ? '가져오는 중…' : 'Codex 가져오기' }}
         </button>
-        <button class="btn-import" :disabled="importingCodex || importingGemini" @click="runImportGemini">
+        <button class="btn-import" :disabled="importingCodex || importingGemini || importingClaude || importingClaudeCode" @click="runImportClaude">
+          {{ importingClaude ? '가져오는 중…' : 'Claude 가져오기' }}
+        </button>
+        <button class="btn-import" :disabled="importingCodex || importingGemini || importingClaude || importingClaudeCode" @click="runImportClaudeCode">
+          {{ importingClaudeCode ? '가져오는 중…' : 'Claude Code 가져오기' }}
+        </button>
+        <button class="btn-import" :disabled="importingCodex || importingGemini || importingClaude || importingClaudeCode" @click="runImportGemini">
           {{ importingGemini ? '가져오는 중…' : 'Gemini 가져오기' }}
         </button>
         <span v-if="importResult" class="import-result">{{ importResult }}</span>

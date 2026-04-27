@@ -6,7 +6,7 @@ import type { AiModel, Message } from '~/composables/useChat'
 
 const route = useRoute()
 const router = useRouter()
-const { getMessages, getAllModels, chatOpenAI, chatGemini, setMessageHidden, updateMessageContent } = useChat()
+const { getMessages, getAllModels, chatOpenAI, chatGemini, chatClaude, setMessageHidden, updateMessageContent } = useChat()
 
 const toggleMessageHidden = async (msg: Message) => {
   if (msg.id.startsWith('temp-')) return
@@ -107,7 +107,9 @@ const sendMessage = async () => {
   await scrollToBottom()
 
   const model = selectedModel.value
-  const chatFn = model?.provider === 'gemini' ? chatGemini : chatOpenAI
+  const chatFn = model?.provider === 'gemini' ? chatGemini
+    : model?.provider === 'claude' ? chatClaude
+    : chatOpenAI
   await chatFn(
     { conversationId: currentConvId.value, model: model?.id ?? '', message: text },
     async (chunk) => {
@@ -158,7 +160,8 @@ const formatCost = (cost: number | null) => {
 }
 
 const modelLabel = (m: AiModel) => {
-  const prefix = `[${m.provider === 'gemini' ? 'Gemini' : 'OpenAI'}] ${m.id}`
+  const providerName = m.provider === 'gemini' ? 'Gemini' : m.provider === 'claude' ? 'Claude' : 'OpenAI'
+  const prefix = `[${providerName}] ${m.id}`
   if (m.provider === 'gemini' && m.rpm != null)
     return `${prefix} (${m.rpm}/min · ${m.rpd?.toLocaleString()}/day)`
   return `${prefix} ($${m.input_per_1m}/$${m.output_per_1m} per 1M)`

@@ -10,7 +10,7 @@ from openai import AsyncOpenAI
 from pydantic import BaseModel
 
 from app.adapter.mongodb.conversation_repository import ConversationRepository
-from app.application.chat_service import GEMINI_LIMITS, GEMINI_PRICING, OPENAI_PRICING, ChatService
+from app.application.chat_service import CLAUDE_PRICING, GEMINI_LIMITS, GEMINI_PRICING, OPENAI_PRICING, ChatService
 from app.core.config import settings
 from app.core.dependencies import get_db
 
@@ -31,6 +31,12 @@ class OpenAIChatRequest(BaseModel):
 class GeminiChatRequest(BaseModel):
     conversation_id: str | None = None
     model: str = "gemini-2.0-flash"
+    message: str
+
+
+class ClaudeChatRequest(BaseModel):
+    conversation_id: str | None = None
+    model: str = "claude-sonnet-4-6"
     message: str
 
 
@@ -102,6 +108,31 @@ async def chat_gemini(body: GeminiChatRequest, svc: ChatService = Depends(_get_s
 
     return StreamingResponse(
         svc.chat_gemini_stream(body.conversation_id, body.model, body.message, settings.gemini_api_key),
+        media_type="text/event-stream",
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+    )
+
+
+@router.get("/claude/models")
+async def get_claude_models():
+    models = [
+        {"id": model_id, "input_per_1m": p["input"], "output_per_1m": p["output"]}
+        for model_id, p in CLAUDE_PRICING.items()
+    ]
+    return sorted(models, key=lambda m: m["input_per_1m"])
+
+
+@router.post("/claude")
+async def chat_claude(body: ClaudeChatRequest, svc: ChatService = Depends(_get_svc)):
+    if body.model not in CLAUDE_PRICING:
+        raise HTTPException(status_code=400, detail=f"지원하지 않는 모델: {body.model}")
+    if not settings.anthropic_api_key:
+        raise HTTPException(status_code=500, detail="ANTHROPIC_API_KEY가 설정되지 않았습니다")
+    if not body.message.strip():
+        raise HTTPException(status_code=400, detail="메시지를 입력해주세요")
+
+    return StreamingResponse(
+        svc.chat_claude_stream(body.conversation_id, body.model, body.message, settings.anthropic_api_key),
         media_type="text/event-stream",
         headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
     )

@@ -32,8 +32,8 @@ export interface Message {
 
 export interface AiModel {
   id: string
-  provider: 'openai' | 'gemini'
-  // OpenAI: 가격 기반
+  provider: 'openai' | 'claude' | 'gemini'
+  // OpenAI / Claude: 가격 기반
   input_per_1m?: number
   output_per_1m?: number
   // Gemini 무료 티어: rate limit 기반
@@ -65,6 +65,12 @@ export const useChat = () => {
   const importGeminiTakeout = () =>
     api<{ imported: number; skipped: number; total: number }>('/api/v1/import/gemini-takeout', { method: 'POST' })
 
+  const importClaudeExport = () =>
+    api<{ imported: number; skipped: number; total: number }>('/api/v1/import/claude-export', { method: 'POST' })
+
+  const importClaudeCode = () =>
+    api<{ imported: number; skipped: number; total: number }>('/api/v1/import/claude-code', { method: 'POST' })
+
   const setHidden = (id: string, isHidden: boolean) =>
     api(`/api/v1/chat/conversations/${id}`, { method: 'PATCH', body: { is_hidden: isHidden } })
 
@@ -82,12 +88,16 @@ export const useChat = () => {
 
   const getAllModels = async (): Promise<AiModel[]> => {
     let openai: Array<{ id: string; input_per_1m: number; output_per_1m: number }> = []
+    let claude: Array<{ id: string; input_per_1m: number; output_per_1m: number }> = []
     let gemini: Array<{ id: string; rpm: number; rpd: number; tpm: number }> = []
     try { openai = await api('/api/v1/chat/openai/models') } catch (_) {}
+    try { claude = await api('/api/v1/chat/claude/models') } catch (_) {}
     try { gemini = await api('/api/v1/chat/gemini/models') } catch (_) {}
 
+    // 순서: OpenAI → Claude → Gemini (각 그룹 내 가격 오름차순)
     return [
       ...openai.map((m): AiModel => ({ ...m, provider: 'openai' })),
+      ...claude.map((m): AiModel => ({ ...m, provider: 'claude' })),
       ...gemini.map((m): AiModel => ({ ...m, provider: 'gemini' })),
     ]
   }
@@ -159,5 +169,12 @@ export const useChat = () => {
     onError: (message: string) => void,
   ) => _streamChat('/api/v1/chat/gemini', params, onChunk, onDone, onError)
 
-  return { listConversations, getConversation, getMessages, getAllModels, chatOpenAI, chatGemini, importJetbrainsCodex, importGeminiTakeout, setHidden, setMessageHidden, updateMessageContent }
+  const chatClaude = (
+    params: { conversationId: string | null; model: string; message: string },
+    onChunk: (content: string) => void,
+    onDone: (data: ChatDoneEvent) => void,
+    onError: (message: string) => void,
+  ) => _streamChat('/api/v1/chat/claude', params, onChunk, onDone, onError)
+
+  return { listConversations, getConversation, getMessages, getAllModels, chatOpenAI, chatGemini, chatClaude, importJetbrainsCodex, importGeminiTakeout, importClaudeExport, importClaudeCode, setHidden, setMessageHidden, updateMessageContent }
 }

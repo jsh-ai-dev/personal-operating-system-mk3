@@ -4,11 +4,18 @@
 import json
 from typing import AsyncGenerator
 
+import anthropic as anthropic_sdk
 from google import genai as google_genai
 from openai import AsyncOpenAI
 
 from app.adapter.mongodb.conversation_repository import ConversationRepository
 from app.domain.conversation import Conversation, Message
+
+CLAUDE_PRICING: dict[str, dict[str, float]] = {
+    "claude-opus-4-7":   {"input": 5.00,  "output": 25.00},
+    "claude-sonnet-4-6": {"input": 3.00,  "output": 15.00},
+    "claude-haiku-4-5":  {"input": 1.00,  "output": 5.00},
+}
 
 OPENAI_PRICING: dict[str, dict[str, float]] = {
     "gpt-5-nano":   {"input": 0.05,  "output": 0.40},
@@ -186,6 +193,70 @@ class ChatService:
                     tokens_output = chunk.usage_metadata.candidates_token_count or 0
 
             cost_usd = _calc_cost(GEMINI_PRICING, model, tokens_input, tokens_output)
+            assistant_msg = await self.repo.insert_message(
+                conversation_id=conversation.id,
+                role="assistant",
+                content=full_content,
+                model=model,
+                tokens_input=tokens_input,
+                tokens_output=tokens_output,
+                cost_usd=cost_usd,
+            )
+
+            await self.repo.update_conversation_stats(
+                conversation.id, tokens_input, tokens_output, cost_usd
+            )
+
+            yield f"data: {json.dumps({'type': 'done', 'conversation_id': conversation.id, 'message_id': assistant_msg.id, 'tokens_input': tokens_input, 'tokens_output': tokens_output, 'cost_usd': cost_usd})}\n\n"
+
+        except Exception as e:
+            yield f"data: {json.dumps({'type': 'error', 'message': str(e)})}\n\n"
+
+    async def chat_claude_stream(
+        self,
+        conversation_id: str | None,
+        model: str,
+        user_message: str,
+        anthropic_api_key: str,
+    ) -> AsyncGenerator[str, None]:
+        try:
+            if conversation_id:
+                conversation = await self.repo.find_conversation_by_id(conversation_id)
+                if not conversation:
+                    yield f"data: {json.dumps({'type': 'error', 'message': 'Conversation not found'})}\n\n"
+                    return
+            else:
+                title = user_message[:50] + ("..." if len(user_message) > 50 else "")
+                conversation = await self.repo.create_conversation("anthropic", model, title)
+
+            await self.repo.insert_message(
+                conversation_id=conversation.id,
+                role="user",
+                content=user_message,
+            )
+
+            # Anthropic은 role이 OpenAI와 동일 ("user"/"assistant") — 변환 불필요
+            history = await self.repo.find_messages_by_conversation(conversation.id)
+            messages = [{"role": msg.role, "content": msg.content} for msg in history]
+
+            client = anthropic_sdk.AsyncAnthropic(api_key=anthropic_api_key)
+            full_content = ""
+            tokens_input = 0
+            tokens_output = 0
+
+            async with client.messages.stream(
+                model=model,
+                max_tokens=8096,
+                messages=messages,
+            ) as stream:
+                async for text in stream.text_stream:
+                    full_content += text
+                    yield f"data: {json.dumps({'type': 'chunk', 'content': text})}\n\n"
+                final = await stream.get_final_message()
+                tokens_input = final.usage.input_tokens
+                tokens_output = final.usage.output_tokens
+
+            cost_usd = _calc_cost(CLAUDE_PRICING, model, tokens_input, tokens_output)
             assistant_msg = await self.repo.insert_message(
                 conversation_id=conversation.id,
                 role="assistant",

@@ -21,6 +21,7 @@ class Settings(BaseSettings):
     # AI API 키
     openai_api_key: str | None = None
     gemini_api_key: str | None = None
+    anthropic_api_key: str | None = None
 
     # CORS 허용 출처 목록 (프론트엔드 주소를 추가해야 브라우저에서 API 호출 가능)
     cors_origins: list[str] = ["http://localhost:3003"]
@@ -31,6 +32,12 @@ class Settings(BaseSettings):
 
     # Google Takeout 내활동.json 경로 (Gemini 대화 임포트용)
     gemini_takeout_path: str = r"data\gemini\내활동.json"
+
+    # Claude.ai 데이터 내보내기 경로 (Claude 대화 임포트용)
+    claude_export_path: str = r"data\claude\conversations.json"
+
+    # Claude Code 로컬 트랜스크립트 디렉토리 (Claude Code 대화 임포트용)
+    claude_code_path: str = r"data\claude-code"
 
 
 # 모듈 로드 시 한 번만 생성 — 앱 전체에서 이 인스턴스를 임포트해 공유
