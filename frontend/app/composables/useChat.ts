@@ -13,6 +13,8 @@ export interface Conversation {
   total_tokens_output: number
   total_cost_usd: number
   summary: string | null
+  summary_model: string | null
+  summary_cost_usd: number | null
   tags: string[]
   is_hidden: boolean
 }
@@ -176,5 +178,11 @@ export const useChat = () => {
     onError: (message: string) => void,
   ) => _streamChat('/api/v1/chat/claude', params, onChunk, onDone, onError)
 
-  return { listConversations, getConversation, getMessages, getAllModels, chatOpenAI, chatGemini, chatClaude, importJetbrainsCodex, importGeminiTakeout, importClaudeExport, importClaudeCode, setHidden, setMessageHidden, updateMessageContent }
+  const summarizeConversation = (id: string, model: string) =>
+    api<{ summary: string; tokens_input: number; tokens_output: number; cost_usd: number }>(
+      `/api/v1/chat/conversations/${id}/summary`,
+      { method: 'POST', body: { model } },
+    )
+
+  return { listConversations, getConversation, getMessages, getAllModels, chatOpenAI, chatGemini, chatClaude, summarizeConversation, importJetbrainsCodex, importGeminiTakeout, importClaudeExport, importClaudeCode, setHidden, setMessageHidden, updateMessageContent }
 }

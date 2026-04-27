@@ -2,6 +2,7 @@
 # SSE(Server-Sent Events) 스트리밍으로 응답 청크를 실시간으로 프론트엔드에 전달
 
 import json
+from datetime import datetime, timezone
 from typing import AsyncGenerator
 
 import anthropic as anthropic_sdk
@@ -48,6 +49,39 @@ GEMINI_LIMITS: dict[str, dict[str, int]] = {
 }
 
 
+_SUMMARIZE_SYSTEM_PROMPT = """당신은 개발자의 AI 대화를 학습 목적으로 요약하는 전문가입니다.
+
+목표: 나중에 복습할 때 빠르게 핵심을 파악할 수 있는 요약 작성
+
+포함 기준:
+- 개념 설명, 원리 이해, 아키텍처 결정, 트레이드오프 분석
+- 실무에서 반복 적용 가능한 패턴이나 모범 사례
+- 처음 접한 기술·도구에 대한 설명
+
+제외 기준:
+- 단순 코드 생성·변환 (그냥 만들어 달라는 요청)
+- 오탈자·문법 수정, 반복적인 단순 작업
+- 결과물만 있고 배울 내용이 없는 항목
+
+출력 형식 (반드시 준수, 한국어):
+## 학습 요약
+
+**주제 태그:** #태그1 #태그2 (3~7개, 기술·개념 키워드)
+
+---
+
+### [개념 제목 — 인사이트 중심 명사구]
+[1~3줄. WHY와 WHEN 중심. 단순 WHAT 나열 금지]
+
+### [다음 개념]
+[1~3줄]
+
+---
+*날짜 | 모델명*
+
+요약할 내용이 전혀 없으면: 헤더와 태그 없이 "*요약할 내용이 없습니다*" 한 줄만 출력"""
+
+
 def _calc_cost(pricing_table: dict, model: str, tokens_input: int, tokens_output: int) -> float:
     pricing = pricing_table.get(model, {"input": 0.0, "output": 0.0})
     return (tokens_input * pricing["input"] + tokens_output * pricing["output"]) / 1_000_000
@@ -72,6 +106,53 @@ class ChatService:
 
     async def update_message_content(self, message_id: str, content: str) -> None:
         await self.repo.update_message_content(message_id, content)
+
+    async def summarize_conversation(self, conversation_id: str, model: str) -> dict:
+        conversation = await self.repo.find_conversation_by_id(conversation_id)
+        if not conversation:
+            raise ValueError("대화를 찾을 수 없습니다")
+
+        messages = await self.repo.find_messages_by_conversation(conversation_id)
+        # 숨긴 메시지 제외 — 사용자가 의도적으로 숨긴 내용은 요약에도 포함하지 않음
+        visible = [m for m in messages if not m.is_hidden]
+        if not visible:
+            raise ValueError("요약할 메시지가 없습니다")
+
+        conv_text = "\n\n".join(
+            f"[{'사용자' if m.role == 'user' else 'AI'}]\n{m.content}"
+            for m in visible
+        )
+        today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+
+        user_prompt = (
+            f"대화 제목: {conversation.title}\n\n"
+            f"아래 대화를 읽고 학습 요약을 작성해주세요.\n"
+            f"각 Q&A 쌍 중 기억할 가치가 있는 내용만 요약하고, 단순 작업은 생략하세요.\n"
+            f"요약 마지막 줄은 반드시 *{today} | {model}* 형식으로 끝내세요.\n\n"
+            f"---\n{conv_text}"
+        )
+
+        response = await self.openai.chat.completions.create(
+            model=model,
+            messages=[
+                {"role": "system", "content": _SUMMARIZE_SYSTEM_PROMPT},
+                {"role": "user", "content": user_prompt},
+            ],
+        )
+
+        summary_text = response.choices[0].message.content.strip()
+        tokens_input = response.usage.prompt_tokens
+        tokens_output = response.usage.completion_tokens
+        cost_usd = _calc_cost(OPENAI_PRICING, model, tokens_input, tokens_output)
+
+        await self.repo.update_summary(conversation_id, summary_text, model, cost_usd)
+
+        return {
+            "summary": summary_text,
+            "tokens_input": tokens_input,
+            "tokens_output": tokens_output,
+            "cost_usd": cost_usd,
+        }
 
     async def chat_openai_stream(
         self,

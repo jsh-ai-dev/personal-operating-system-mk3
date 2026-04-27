@@ -31,6 +31,8 @@ class ConversationRepository:
             total_tokens_output=doc.get("total_tokens_output", 0),
             total_cost_usd=doc.get("total_cost_usd", 0.0),
             summary=doc.get("summary"),
+            summary_model=doc.get("summary_model"),
+            summary_cost_usd=doc.get("summary_cost_usd"),
             tags=doc.get("tags", []),
             qdrant_id=doc.get("qdrant_id"),
             source_id=doc.get("source_id"),
@@ -101,6 +103,20 @@ class ConversationRepository:
     async def find_conversation_by_source_id(self, source_id: str) -> Conversation | None:
         doc = await self.conversations.find_one({"source_id": source_id})
         return self._to_conversation(doc) if doc else None
+
+    async def update_summary(self, id: str, summary: str, model: str, cost_usd: float) -> None:
+        try:
+            await self.conversations.update_one(
+                {"_id": ObjectId(id)},
+                {"$set": {
+                    "summary": summary,
+                    "summary_model": model,
+                    "summary_cost_usd": cost_usd,
+                    "updated_at": datetime.now(timezone.utc),
+                }},
+            )
+        except InvalidId:
+            pass
 
     async def set_message_hidden(self, message_id: str, is_hidden: bool) -> None:
         try:

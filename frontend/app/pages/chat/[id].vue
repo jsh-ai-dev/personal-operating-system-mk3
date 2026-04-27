@@ -2,11 +2,11 @@
 <!-- 첫 응답 수신 후 URL을 /chat/new → /chat/{실제ID}로 교체해 새로고침 시 대화가 유지됨 -->
 
 <script setup lang="ts">
-import type { AiModel, Message } from '~/composables/useChat'
+import type { AiModel, Conversation, Message } from '~/composables/useChat'
 
 const route = useRoute()
 const router = useRouter()
-const { getMessages, getAllModels, chatOpenAI, chatGemini, chatClaude, setMessageHidden, updateMessageContent } = useChat()
+const { getConversation, getMessages, getAllModels, chatOpenAI, chatGemini, chatClaude, summarizeConversation, setMessageHidden, updateMessageContent } = useChat()
 
 const toggleMessageHidden = async (msg: Message) => {
   if (msg.id.startsWith('temp-')) return
@@ -50,11 +50,23 @@ const handleEditKeydown = (e: KeyboardEvent, msg: Message) => {
 const isNew = route.params.id === 'new'
 const currentConvId = ref<string | null>(isNew ? null : route.params.id as string)
 
-// 기존 대화면 메시지 로드
+// 기존 대화면 대화 메타데이터 + 메시지 병렬 로드
+const conversationData = ref<Conversation | null>(null)
 const messages = ref<Message[]>([])
 if (!isNew && currentConvId.value) {
-  messages.value = await getMessages(currentConvId.value)
+  ;[conversationData.value, messages.value] = await Promise.all([
+    getConversation(currentConvId.value),
+    getMessages(currentConvId.value),
+  ])
 }
+
+// 요약 상태 — 기존 요약이 있으면 초기값으로 세팅
+const summary = ref<string | null>(conversationData.value?.summary ?? null)
+const summaryModel_saved = ref<string | null>(conversationData.value?.summary_model ?? null)
+const summaryCost_saved = ref<number | null>(conversationData.value?.summary_cost_usd ?? null)
+const summaryOpen = ref(false)
+const summarizing = ref(false)
+const summaryError = ref('')
 
 const models = await getAllModels()
 // 기존 대화면 어시스턴트 메시지에서 모델 추론, 없으면 목록 첫 번째
@@ -67,6 +79,53 @@ const isReadOnly = ref(
   messages.value.some(m => m.role === 'assistant') &&
   priorModel === ''
 )
+
+// 읽기 전용 대화의 소스 레이블 — model 값으로 판별 (임포트 시 고정값 사용)
+const IMPORT_LABELS: Record<string, string> = {
+  'codex': 'JetBrains · Codex',
+  'claude-code': 'Claude Code',
+  'claude': 'Claude.ai',
+  'gemini': 'Gemini',
+}
+const readOnlyLabel = computed(() =>
+  IMPORT_LABELS[conversationData.value?.model ?? ''] ?? '가져온 대화'
+)
+
+// 요약 모델 셀렉트 — OpenAI 모델만 필터링, 기본값 gpt-5-mini
+const summaryModels = computed(() => models.filter(m => m.provider === 'openai'))
+const summaryModelId = ref('gpt-5-mini')
+
+const doSummarize = async () => {
+  if (!currentConvId.value || summarizing.value) return
+  summarizing.value = true
+  summaryError.value = ''
+  try {
+    const result = await summarizeConversation(currentConvId.value, summaryModelId.value)
+    summary.value = result.summary
+    summaryModel_saved.value = summaryModelId.value
+    summaryCost_saved.value = result.cost_usd
+    summaryOpen.value = true
+  } catch (e: unknown) {
+    summaryError.value = e instanceof Error ? e.message : '요약 중 오류가 발생했습니다'
+  } finally {
+    summarizing.value = false
+  }
+}
+
+// 요약 텍스트(마크다운)를 HTML로 변환 — 외부 라이브러리 없이 요약 형식에 맞게 처리
+const renderSummary = (text: string): string => {
+  const escaped = text
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+  return escaped
+    .replace(/^## (.+)$/gm, '<h2>$1</h2>')
+    .replace(/^### (.+)$/gm, '<h3>$1</h3>')
+    .replace(/^---$/gm, '<hr>')
+    .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
+    .replace(/\*([^*\n]+?)\*/g, '<em>$1</em>')
+    .replace(/\n/g, '<br>')
+}
 
 const inputText = ref('')
 const isStreaming = ref(false)
@@ -175,8 +234,33 @@ const modelLabel = (m: AiModel) => {
       <select v-show="!isReadOnly" v-model="selectedModelId" class="model-select" :disabled="isStreaming || !!currentConvId">
         <option v-for="m in models" :key="m.id" :value="m.id">{{ modelLabel(m) }}</option>
       </select>
-      <span v-show="isReadOnly" class="readonly-label">JetBrains · Codex</span>
+      <span v-show="isReadOnly" class="readonly-label">{{ readOnlyLabel }}</span>
     </header>
+
+    <!-- 요약 컨트롤 바 — 새 대화에서는 숨김 -->
+    <div v-if="!isNew" class="summary-bar">
+      <select v-model="summaryModelId" class="summary-model-select" :disabled="summarizing">
+        <option v-for="m in summaryModels" :key="m.id" :value="m.id">
+          {{ m.id }} (${{ m.input_per_1m }}/${{ m.output_per_1m }})
+        </option>
+      </select>
+      <button class="btn-summarize" :disabled="summarizing" @click="doSummarize">
+        {{ summarizing ? '요약 중…' : summary ? '재요약' : '요약하기' }}
+      </button>
+      <template v-if="summaryCost_saved != null">
+        <span class="summary-cost">{{ formatCost(summaryCost_saved) }} · {{ summaryModel_saved }}</span>
+        <NuxtLink to="/summaries" class="summary-link">요약 모음 →</NuxtLink>
+      </template>
+      <span v-if="summaryError" class="summary-error">{{ summaryError }}</span>
+    </div>
+
+    <!-- 기존 요약 패널 (접기/펼치기) -->
+    <div v-if="summary" class="summary-panel">
+      <button class="summary-toggle" @click="summaryOpen = !summaryOpen">
+        {{ summaryOpen ? '▲ 요약 접기' : '▼ 요약 보기' }}
+      </button>
+      <div v-show="summaryOpen" class="summary-body" v-html="renderSummary(summary)" />
+    </div>
 
     <div class="messages" ref="messagesEl">
       <div v-if="messages.length === 0 && !isStreaming" class="placeholder">
@@ -423,4 +507,74 @@ const modelLabel = (m: AiModel) => {
 }
 .send-btn:disabled { opacity: 0.5; cursor: default; }
 .send-btn:not(:disabled):hover { background: #4f46e5; }
+.summary-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 0;
+  border-bottom: 1px solid #f3f4f6;
+  flex-shrink: 0;
+  flex-wrap: wrap;
+}
+.summary-model-select {
+  font-family: monospace;
+  font-size: 0.78rem;
+  border: 1px solid #d1d5db;
+  border-radius: 6px;
+  padding: 3px 7px;
+  background: #fff;
+  color: #374151;
+  cursor: pointer;
+}
+.summary-model-select:disabled { opacity: 0.5; cursor: default; }
+.btn-summarize {
+  padding: 4px 12px;
+  background: none;
+  border: 1px solid #6366f1;
+  border-radius: 6px;
+  color: #6366f1;
+  font-family: monospace;
+  font-size: 0.8rem;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.btn-summarize:disabled { opacity: 0.5; cursor: default; }
+.btn-summarize:not(:disabled):hover { background: #eef2ff; }
+.summary-cost { font-size: 0.78rem; color: #059669; }
+.summary-link { font-size: 0.78rem; color: #6366f1; text-decoration: none; }
+.summary-link:hover { text-decoration: underline; }
+.summary-error { font-size: 0.78rem; color: #dc2626; }
+.summary-panel {
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  margin-bottom: 8px;
+  flex-shrink: 0;
+  overflow: hidden;
+}
+.summary-toggle {
+  width: 100%;
+  padding: 8px 14px;
+  background: #f9fafb;
+  border: none;
+  text-align: left;
+  font-family: monospace;
+  font-size: 0.8rem;
+  color: #6b7280;
+  cursor: pointer;
+}
+.summary-toggle:hover { background: #f3f4f6; color: #374151; }
+.summary-body {
+  padding: 14px 16px;
+  font-family: monospace;
+  font-size: 0.85rem;
+  line-height: 1.7;
+  color: #1f2937;
+  border-top: 1px solid #e5e7eb;
+}
+/* 요약 본문 내 마크다운 변환 결과 스타일 */
+.summary-body :deep(h2) { font-size: 1rem; font-weight: 700; margin-bottom: 10px; color: #111; }
+.summary-body :deep(h3) { font-size: 0.9rem; font-weight: 600; margin: 14px 0 4px; color: #374151; }
+.summary-body :deep(hr) { border: none; border-top: 1px solid #e5e7eb; margin: 12px 0; }
+.summary-body :deep(strong) { color: #111; }
+.summary-body :deep(em) { color: #6b7280; font-style: normal; font-size: 0.8rem; }
 </style>

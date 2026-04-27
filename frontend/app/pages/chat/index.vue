@@ -61,8 +61,26 @@ const formatDate = (iso: string) =>
     month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit',
   })
 
-const providerLabel = (provider: string) =>
-  ({ openai: 'OpenAI', anthropic: 'Anthropic', google: 'Google', gemini: 'Gemini', jetbrains: 'JetBrains' })[provider] ?? provider
+// 소스 레이블 — 임포트는 모델값 기준, API는 provider 기준
+const convSourceLabel = (conv: { provider: string; model: string }): string => {
+  const labels: Record<string, string> = {
+    'codex': 'JetBrains',
+    'claude-code': 'Claude Code',
+    'claude': 'Claude.ai',
+    'gemini': 'Gemini',
+  }
+  if (labels[conv.model]) return labels[conv.model]
+  return ({ openai: 'OpenAI', anthropic: 'Claude', google: 'Gemini' })[conv.provider] ?? conv.provider
+}
+
+// 대화 타입 — API(직접 호출) / 채팅 임포트(구독 서비스) / 코딩 임포트(코딩 어시스턴트)
+const convType = (conv: { model: string }): { label: string; cls: string } => {
+  if (conv.model === 'codex' || conv.model === 'claude-code')
+    return { label: '코딩', cls: 'type-code' }
+  if (conv.model === 'claude' || conv.model === 'gemini')
+    return { label: '채팅 임포트', cls: 'type-chat' }
+  return { label: 'API', cls: 'type-api' }
+}
 </script>
 
 <template>
@@ -94,7 +112,8 @@ const providerLabel = (provider: string) =>
       <div v-for="conv in conversations" :key="conv.id" class="conv-row">
         <NuxtLink :to="`/chat/${conv.id}`" class="conv-item">
           <div class="conv-meta">
-            <span class="badge" :class="conv.provider">{{ providerLabel(conv.provider) }}</span>
+            <span class="badge" :class="conv.provider">{{ convSourceLabel(conv) }}</span>
+            <span class="type-tag" :class="convType(conv).cls">{{ convType(conv).label }}</span>
             <span class="model">{{ conv.model }}</span>
             <span class="cost">{{ formatCost(conv.total_cost_usd) }}</span>
             <span class="tokens">{{ (conv.total_tokens_input + conv.total_tokens_output).toLocaleString() }} tokens</span>
@@ -223,6 +242,16 @@ h1 { font-size: 1.3rem; margin: 0; }
 .badge.openai { background: #d1fae5; color: #065f46; }
 .badge.anthropic { background: #fde68a; color: #78350f; }
 .badge.google { background: #dbeafe; color: #1e3a8a; }
+.badge.jetbrains { background: #ede9fe; color: #5b21b6; }
+.type-tag {
+  padding: 2px 6px;
+  border-radius: 4px;
+  font-size: 0.68rem;
+  font-weight: 500;
+}
+.type-api { background: #f3f4f6; color: #6b7280; }
+.type-chat { background: #ecfdf5; color: #065f46; }
+.type-code { background: #ede9fe; color: #5b21b6; }
 .model { color: #6b7280; }
 .cost { color: #059669; font-weight: 600; }
 .tokens { color: #9ca3af; }

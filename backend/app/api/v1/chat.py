@@ -49,6 +49,10 @@ class UpdateMessageRequest(BaseModel):
     content: str | None = None
 
 
+class SummarizeRequest(BaseModel):
+    model: str = "gpt-5-mini"
+
+
 @router.get("/conversations")
 async def list_conversations(include_hidden: bool = False, svc: ChatService = Depends(_get_svc)):
     convs = await svc.list_conversations(include_hidden=include_hidden)
@@ -86,6 +90,20 @@ async def get_conversation(id: str, svc: ChatService = Depends(_get_svc)):
 async def get_messages(id: str, svc: ChatService = Depends(_get_svc)):
     msgs = await svc.get_messages(id)
     return [asdict(m) for m in msgs]
+
+
+@router.post("/conversations/{id}/summary")
+async def summarize_conversation(
+    id: str, body: SummarizeRequest, svc: ChatService = Depends(_get_svc)
+):
+    if body.model not in OPENAI_PRICING:
+        raise HTTPException(status_code=400, detail=f"지원하지 않는 모델: {body.model}")
+    if not settings.openai_api_key:
+        raise HTTPException(status_code=500, detail="OPENAI_API_KEY가 설정되지 않았습니다")
+    try:
+        return await svc.summarize_conversation(id, body.model)
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))
 
 
 @router.get("/gemini/models")

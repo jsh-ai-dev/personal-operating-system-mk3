@@ -9,6 +9,7 @@
       <div class="logo">POS mk3</div>
       <NuxtLink to="/" class="nav-link">대시보드</NuxtLink>
       <NuxtLink to="/chat" class="nav-link">AI Chat</NuxtLink>
+      <NuxtLink to="/summaries" class="nav-link">학습 요약</NuxtLink>
     </nav>
 
     <div class="content">
