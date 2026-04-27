@@ -64,6 +64,7 @@ const renderSummary = (text: string): string => {
             {{ p === 'all' ? '전체' : providerLabel(p) }}
           </option>
         </select>
+        <NuxtLink to="/quiz" class="btn-go-chat">AI 퀴즈</NuxtLink>
         <NuxtLink to="/chat" class="btn-go-chat">← 대화 목록</NuxtLink>
       </div>
     </header>

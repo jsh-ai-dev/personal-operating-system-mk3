@@ -34,6 +34,9 @@ class Conversation:
     summary: str | None = None
     summary_model: str | None = None
     summary_cost_usd: float | None = None
+    quiz: list | None = None          # list[{question, options, answer, explanation}]
+    quiz_model: str | None = None
+    quiz_cost_usd: float | None = None
     tags: list = field(default_factory=list)
     qdrant_id: str | None = None
     # 임포트 시 원본 세션 ID 저장 — 중복 임포트 감지용

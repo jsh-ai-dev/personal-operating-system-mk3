@@ -33,6 +33,9 @@ class ConversationRepository:
             summary=doc.get("summary"),
             summary_model=doc.get("summary_model"),
             summary_cost_usd=doc.get("summary_cost_usd"),
+            quiz=doc.get("quiz"),
+            quiz_model=doc.get("quiz_model"),
+            quiz_cost_usd=doc.get("quiz_cost_usd"),
             tags=doc.get("tags", []),
             qdrant_id=doc.get("qdrant_id"),
             source_id=doc.get("source_id"),
@@ -112,6 +115,20 @@ class ConversationRepository:
                     "summary": summary,
                     "summary_model": model,
                     "summary_cost_usd": cost_usd,
+                    "updated_at": datetime.now(timezone.utc),
+                }},
+            )
+        except InvalidId:
+            pass
+
+    async def update_quiz(self, id: str, quiz: list, model: str, cost_usd: float) -> None:
+        try:
+            await self.conversations.update_one(
+                {"_id": ObjectId(id)},
+                {"$set": {
+                    "quiz": quiz,
+                    "quiz_model": model,
+                    "quiz_cost_usd": cost_usd,
                     "updated_at": datetime.now(timezone.utc),
                 }},
             )

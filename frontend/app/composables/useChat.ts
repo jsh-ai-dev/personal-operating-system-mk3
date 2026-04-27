@@ -1,6 +1,13 @@
 // [컴포저블] 채팅 API 통신 로직을 컴포넌트로부터 분리한 재사용 함수 모음
 // SSE(Server-Sent Events) 스트리밍 파싱 포함 — 컴포넌트는 콜백만 넘기면 됨
 
+export interface QuizQuestion {
+  question: string
+  options: string[]  // 4개, "A. ..." 형식
+  answer: number     // 정답 인덱스 (0~3)
+  explanation: string
+}
+
 export interface Conversation {
   id: string
   provider: string
@@ -15,6 +22,9 @@ export interface Conversation {
   summary: string | null
   summary_model: string | null
   summary_cost_usd: number | null
+  quiz: QuizQuestion[] | null
+  quiz_model: string | null
+  quiz_cost_usd: number | null
   tags: string[]
   is_hidden: boolean
 }
@@ -184,5 +194,11 @@ export const useChat = () => {
       { method: 'POST', body: { model } },
     )
 
-  return { listConversations, getConversation, getMessages, getAllModels, chatOpenAI, chatGemini, chatClaude, summarizeConversation, importJetbrainsCodex, importGeminiTakeout, importClaudeExport, importClaudeCode, setHidden, setMessageHidden, updateMessageContent }
+  const generateQuiz = (id: string, model: string) =>
+    api<{ quiz: QuizQuestion[]; tokens_input: number; tokens_output: number; cost_usd: number }>(
+      `/api/v1/chat/conversations/${id}/quiz`,
+      { method: 'POST', body: { model } },
+    )
+
+  return { listConversations, getConversation, getMessages, getAllModels, chatOpenAI, chatGemini, chatClaude, summarizeConversation, generateQuiz, importJetbrainsCodex, importGeminiTakeout, importClaudeExport, importClaudeCode, setHidden, setMessageHidden, updateMessageContent }
 }

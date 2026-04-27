@@ -53,6 +53,10 @@ class SummarizeRequest(BaseModel):
     model: str = "gpt-5-mini"
 
 
+class QuizRequest(BaseModel):
+    model: str = "gpt-5-mini"
+
+
 @router.get("/conversations")
 async def list_conversations(include_hidden: bool = False, svc: ChatService = Depends(_get_svc)):
     convs = await svc.list_conversations(include_hidden=include_hidden)
@@ -102,6 +106,20 @@ async def summarize_conversation(
         raise HTTPException(status_code=500, detail="OPENAI_API_KEY가 설정되지 않았습니다")
     try:
         return await svc.summarize_conversation(id, body.model)
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+
+
+@router.post("/conversations/{id}/quiz")
+async def generate_quiz(
+    id: str, body: QuizRequest, svc: ChatService = Depends(_get_svc)
+):
+    if body.model not in OPENAI_PRICING:
+        raise HTTPException(status_code=400, detail=f"지원하지 않는 모델: {body.model}")
+    if not settings.openai_api_key:
+        raise HTTPException(status_code=500, detail="OPENAI_API_KEY가 설정되지 않았습니다")
+    try:
+        return await svc.generate_quiz(id, body.model)
     except ValueError as e:
         raise HTTPException(status_code=404, detail=str(e))
 

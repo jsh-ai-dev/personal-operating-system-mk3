@@ -49,6 +49,38 @@ GEMINI_LIMITS: dict[str, dict[str, int]] = {
 }
 
 
+_QUIZ_SYSTEM_PROMPT = """당신은 개발자의 학습 요약을 바탕으로 4지선다 퀴즈를 만드는 전문가입니다.
+
+배경: 사용자는 Python, FastAPI, Vue, Nuxt, Docker 등 처음 접하는 기술들을 배우고 있습니다.
+나중에 다시 봤을 때 "이거 헷갈렸던 거네, 다시 확인하길 잘했다"는 문제를 만드는 것이 목표입니다.
+
+포함 기준:
+- 개념의 동작 방식, 문법, 옵션 — 처음 배우는 기술이라면 기본적인 것도 퀴즈 가치 있음
+- 4개 선택지를 명확히 구분할 수 있고 정답이 딱 하나인 것
+- 나중에 헷갈릴 수 있거나, 모르면 실수할 수 있는 내용
+
+제외 기준:
+- 단순 작업 지시, 코드 변경 기록, 결과물 나열 (학습 내용이 아닌 것)
+- 잡담, 진행 상황 확인
+- 이 프로젝트 코드를 모르면 문제 자체가 성립 안 되는 맥락 종속 내용
+- 선택지를 그럴듯하게 만들기 어려운 내용 (억지로 틀린 보기를 구성해야 하는 경우)
+
+문제 수: 제한 없음. 가치 있는 내용이 많으면 많이, 없으면 적게. 억지로 채우지 말 것.
+퀴즈로 만들 내용이 없으면 {"questions": []} 반환.
+
+출력 형식 (반드시 JSON 객체, 마크다운 코드블록 금지):
+{"questions": [
+  {
+    "question": "질문 (한국어)",
+    "options": ["A. 보기1", "B. 보기2", "C. 보기3", "D. 보기4"],
+    "answer": 0,
+    "explanation": "정답 해설 1~2줄 (한국어)"
+  }
+]}
+
+answer는 정답 보기의 인덱스 (0~3)."""
+
+
 _SUMMARIZE_SYSTEM_PROMPT = """당신은 개발자의 AI 대화를 학습 목적으로 요약하는 전문가입니다.
 
 목표: 나중에 복습할 때 빠르게 핵심을 파악할 수 있는 요약 작성
@@ -149,6 +181,43 @@ class ChatService:
 
         return {
             "summary": summary_text,
+            "tokens_input": tokens_input,
+            "tokens_output": tokens_output,
+            "cost_usd": cost_usd,
+        }
+
+    async def generate_quiz(self, conversation_id: str, model: str) -> dict:
+        conversation = await self.repo.find_conversation_by_id(conversation_id)
+        if not conversation:
+            raise ValueError("대화를 찾을 수 없습니다")
+        if not conversation.summary:
+            raise ValueError("요약이 없습니다. 먼저 요약을 생성해주세요")
+
+        response = await self.openai.chat.completions.create(
+            model=model,
+            messages=[
+                {"role": "system", "content": _QUIZ_SYSTEM_PROMPT},
+                {"role": "user", "content": f"다음 학습 요약을 바탕으로 퀴즈를 만들어주세요.\n\n{conversation.summary}"},
+            ],
+            response_format={"type": "json_object"},
+        )
+
+        raw = response.choices[0].message.content.strip()
+        tokens_input = response.usage.prompt_tokens
+        tokens_output = response.usage.completion_tokens
+        cost_usd = _calc_cost(OPENAI_PRICING, model, tokens_input, tokens_output)
+
+        import json as _json
+        parsed = _json.loads(raw)
+        # AI가 {"questions": [...]} 형태로 감쌀 수 있어서 배열만 추출
+        quiz = parsed if isinstance(parsed, list) else next(
+            (v for v in parsed.values() if isinstance(v, list)), []
+        )
+
+        await self.repo.update_quiz(conversation_id, quiz, model, cost_usd)
+
+        return {
+            "quiz": quiz,
             "tokens_input": tokens_input,
             "tokens_output": tokens_output,
             "cost_usd": cost_usd,
