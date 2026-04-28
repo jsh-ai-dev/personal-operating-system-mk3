@@ -124,27 +124,27 @@ class ChatService:
         self.repo = repo
         self.openai = openai_client
 
-    async def list_conversations(self, include_hidden: bool = False) -> list[Conversation]:
-        return await self.repo.find_all_conversations(include_hidden=include_hidden)
+    async def list_conversations(self, owner_id: str, include_hidden: bool = False) -> list[Conversation]:
+        return await self.repo.find_all_conversations(owner_id=owner_id, include_hidden=include_hidden)
 
-    async def get_messages(self, conversation_id: str) -> list[Message]:
-        return await self.repo.find_messages_by_conversation(conversation_id)
+    async def get_messages(self, owner_id: str, conversation_id: str) -> list[Message]:
+        return await self.repo.find_messages_by_conversation(conversation_id, owner_id)
 
-    async def set_hidden(self, conversation_id: str, is_hidden: bool) -> None:
-        await self.repo.set_hidden(conversation_id, is_hidden)
+    async def set_hidden(self, owner_id: str, conversation_id: str, is_hidden: bool) -> None:
+        await self.repo.set_hidden(conversation_id, owner_id, is_hidden)
 
-    async def set_message_hidden(self, message_id: str, is_hidden: bool) -> None:
-        await self.repo.set_message_hidden(message_id, is_hidden)
+    async def set_message_hidden(self, owner_id: str, message_id: str, is_hidden: bool) -> None:
+        await self.repo.set_message_hidden(message_id, owner_id, is_hidden)
 
-    async def update_message_content(self, message_id: str, content: str) -> None:
-        await self.repo.update_message_content(message_id, content)
+    async def update_message_content(self, owner_id: str, message_id: str, content: str) -> None:
+        await self.repo.update_message_content(message_id, owner_id, content)
 
-    async def summarize_conversation(self, conversation_id: str, model: str) -> dict:
-        conversation = await self.repo.find_conversation_by_id(conversation_id)
+    async def summarize_conversation(self, owner_id: str, conversation_id: str, model: str) -> dict:
+        conversation = await self.repo.find_conversation_by_id(conversation_id, owner_id)
         if not conversation:
             raise ValueError("대화를 찾을 수 없습니다")
 
-        messages = await self.repo.find_messages_by_conversation(conversation_id)
+        messages = await self.repo.find_messages_by_conversation(conversation_id, owner_id)
         # 숨긴 메시지 제외 — 사용자가 의도적으로 숨긴 내용은 요약에도 포함하지 않음
         visible = [m for m in messages if not m.is_hidden]
         if not visible:
@@ -177,7 +177,7 @@ class ChatService:
         tokens_output = response.usage.completion_tokens
         cost_usd = _calc_cost(OPENAI_PRICING, model, tokens_input, tokens_output)
 
-        await self.repo.update_summary(conversation_id, summary_text, model, cost_usd)
+        await self.repo.update_summary(conversation_id, owner_id, summary_text, model, cost_usd)
 
         return {
             "summary": summary_text,
@@ -186,8 +186,8 @@ class ChatService:
             "cost_usd": cost_usd,
         }
 
-    async def generate_quiz(self, conversation_id: str, model: str) -> dict:
-        conversation = await self.repo.find_conversation_by_id(conversation_id)
+    async def generate_quiz(self, owner_id: str, conversation_id: str, model: str) -> dict:
+        conversation = await self.repo.find_conversation_by_id(conversation_id, owner_id)
         if not conversation:
             raise ValueError("대화를 찾을 수 없습니다")
         if not conversation.summary:
@@ -214,7 +214,7 @@ class ChatService:
             (v for v in parsed.values() if isinstance(v, list)), []
         )
 
-        await self.repo.update_quiz(conversation_id, quiz, model, cost_usd)
+        await self.repo.update_quiz(conversation_id, owner_id, quiz, model, cost_usd)
 
         return {
             "quiz": quiz,
@@ -225,6 +225,7 @@ class ChatService:
 
     async def chat_openai_stream(
         self,
+        owner_id: str,
         conversation_id: str | None,
         model: str,
         user_message: str,
@@ -232,23 +233,24 @@ class ChatService:
         try:
             # 대화 생성 또는 기존 대화 로드
             if conversation_id:
-                conversation = await self.repo.find_conversation_by_id(conversation_id)
+                conversation = await self.repo.find_conversation_by_id(conversation_id, owner_id)
                 if not conversation:
                     yield f"data: {json.dumps({'type': 'error', 'message': 'Conversation not found'})}\n\n"
                     return
             else:
                 title = user_message[:50] + ("..." if len(user_message) > 50 else "")
-                conversation = await self.repo.create_conversation("openai", model, title)
+                conversation = await self.repo.create_conversation("openai", model, title, owner_id)
 
             # 유저 메시지 저장
             await self.repo.insert_message(
                 conversation_id=conversation.id,
+                    owner_id=owner_id,
                 role="user",
                 content=user_message,
             )
 
             # 전체 히스토리로 OpenAI 요청 구성
-            history = await self.repo.find_messages_by_conversation(conversation.id)
+            history = await self.repo.find_messages_by_conversation(conversation.id, owner_id)
             messages = [{"role": msg.role, "content": msg.content} for msg in history]
 
             # 스트리밍 호출
@@ -276,6 +278,7 @@ class ChatService:
             cost_usd = _calc_cost(OPENAI_PRICING, model, tokens_input, tokens_output)
             assistant_msg = await self.repo.insert_message(
                 conversation_id=conversation.id,
+                owner_id=owner_id,
                 role="assistant",
                 content=full_content,
                 model=model,
@@ -286,7 +289,7 @@ class ChatService:
 
             # 대화 통계 업데이트
             await self.repo.update_conversation_stats(
-                conversation.id, tokens_input, tokens_output, cost_usd
+                conversation.id, owner_id, tokens_input, tokens_output, cost_usd
             )
 
             yield f"data: {json.dumps({'type': 'done', 'conversation_id': conversation.id, 'message_id': assistant_msg.id, 'tokens_input': tokens_input, 'tokens_output': tokens_output, 'cost_usd': cost_usd})}\n\n"
@@ -296,6 +299,7 @@ class ChatService:
 
     async def chat_gemini_stream(
         self,
+        owner_id: str,
         conversation_id: str | None,
         model: str,
         user_message: str,
@@ -303,22 +307,23 @@ class ChatService:
     ) -> AsyncGenerator[str, None]:
         try:
             if conversation_id:
-                conversation = await self.repo.find_conversation_by_id(conversation_id)
+                conversation = await self.repo.find_conversation_by_id(conversation_id, owner_id)
                 if not conversation:
                     yield f"data: {json.dumps({'type': 'error', 'message': 'Conversation not found'})}\n\n"
                     return
             else:
                 title = user_message[:50] + ("..." if len(user_message) > 50 else "")
-                conversation = await self.repo.create_conversation("google", model, title)
+                conversation = await self.repo.create_conversation("google", model, title, owner_id)
 
             await self.repo.insert_message(
                 conversation_id=conversation.id,
+                owner_id=owner_id,
                 role="user",
                 content=user_message,
             )
 
             # Gemini는 role이 "user"/"model" — "assistant"를 "model"로 변환
-            history = await self.repo.find_messages_by_conversation(conversation.id)
+            history = await self.repo.find_messages_by_conversation(conversation.id, owner_id)
             contents = [
                 {"role": "model" if msg.role == "assistant" else "user",
                  "parts": [{"text": msg.content}]}
@@ -345,6 +350,7 @@ class ChatService:
             cost_usd = _calc_cost(GEMINI_PRICING, model, tokens_input, tokens_output)
             assistant_msg = await self.repo.insert_message(
                 conversation_id=conversation.id,
+                owner_id=owner_id,
                 role="assistant",
                 content=full_content,
                 model=model,
@@ -354,7 +360,7 @@ class ChatService:
             )
 
             await self.repo.update_conversation_stats(
-                conversation.id, tokens_input, tokens_output, cost_usd
+                conversation.id, owner_id, tokens_input, tokens_output, cost_usd
             )
 
             yield f"data: {json.dumps({'type': 'done', 'conversation_id': conversation.id, 'message_id': assistant_msg.id, 'tokens_input': tokens_input, 'tokens_output': tokens_output, 'cost_usd': cost_usd})}\n\n"
@@ -364,6 +370,7 @@ class ChatService:
 
     async def chat_claude_stream(
         self,
+        owner_id: str,
         conversation_id: str | None,
         model: str,
         user_message: str,
@@ -371,22 +378,23 @@ class ChatService:
     ) -> AsyncGenerator[str, None]:
         try:
             if conversation_id:
-                conversation = await self.repo.find_conversation_by_id(conversation_id)
+                conversation = await self.repo.find_conversation_by_id(conversation_id, owner_id)
                 if not conversation:
                     yield f"data: {json.dumps({'type': 'error', 'message': 'Conversation not found'})}\n\n"
                     return
             else:
                 title = user_message[:50] + ("..." if len(user_message) > 50 else "")
-                conversation = await self.repo.create_conversation("anthropic", model, title)
+                conversation = await self.repo.create_conversation("anthropic", model, title, owner_id)
 
             await self.repo.insert_message(
                 conversation_id=conversation.id,
+                owner_id=owner_id,
                 role="user",
                 content=user_message,
             )
 
             # Anthropic은 role이 OpenAI와 동일 ("user"/"assistant") — 변환 불필요
-            history = await self.repo.find_messages_by_conversation(conversation.id)
+            history = await self.repo.find_messages_by_conversation(conversation.id, owner_id)
             messages = [{"role": msg.role, "content": msg.content} for msg in history]
 
             client = anthropic_sdk.AsyncAnthropic(api_key=anthropic_api_key)
@@ -409,6 +417,7 @@ class ChatService:
             cost_usd = _calc_cost(CLAUDE_PRICING, model, tokens_input, tokens_output)
             assistant_msg = await self.repo.insert_message(
                 conversation_id=conversation.id,
+                owner_id=owner_id,
                 role="assistant",
                 content=full_content,
                 model=model,
@@ -418,7 +427,7 @@ class ChatService:
             )
 
             await self.repo.update_conversation_stats(
-                conversation.id, tokens_input, tokens_output, cost_usd
+                conversation.id, owner_id, tokens_input, tokens_output, cost_usd
             )
 
             yield f"data: {json.dumps({'type': 'done', 'conversation_id': conversation.id, 'message_id': assistant_msg.id, 'tokens_input': tokens_input, 'tokens_output': tokens_output, 'cost_usd': cost_usd})}\n\n"

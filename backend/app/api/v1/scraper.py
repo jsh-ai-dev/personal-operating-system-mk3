@@ -14,13 +14,17 @@ from app.adapter.scraper.chatgpt_scraper import scrape_chatgpt
 from app.adapter.scraper.codex_scraper import scrape_codex
 from app.adapter.scraper.gemini_scraper import scrape_gemini
 from app.adapter.scraper.cursor_scraper import scrape_cursor
+from app.core.auth import AuthUser, get_current_user
 from app.core.dependencies import get_db
 
 router = APIRouter(prefix="/scraper", tags=["scraper"])
 
 
 @router.post("/claude")
-async def trigger_claude_scrape(db: AsyncIOMotorDatabase = Depends(get_db)):
+async def trigger_claude_scrape(
+    db: AsyncIOMotorDatabase = Depends(get_db),
+    user: AuthUser = Depends(get_current_user),
+):
     try:
         result = await scrape_claude()
     except Exception as e:
@@ -32,7 +36,7 @@ async def trigger_claude_scrape(db: AsyncIOMotorDatabase = Depends(get_db)):
 
     # DB에서 Claude 서비스 레코드를 찾아 스크래핑 결과로 업데이트
     repo = AIServiceRepository(db)
-    service = await repo.find_by_name('Claude')
+    service = await repo.find_by_name('Claude', user.id)
     if service:
         update_data = {}
 
@@ -52,13 +56,16 @@ async def trigger_claude_scrape(db: AsyncIOMotorDatabase = Depends(get_db)):
             update_data['usage_unit'] = f"% (세션, {reset_info} 후 리셋)" if reset_info else "% (현재 세션)"
 
         if update_data:
-            await repo.update(service.id, update_data)
+            await repo.update(service.id, update_data, user.id)
 
     return result
 
 
 @router.post("/chatgpt")
-async def trigger_chatgpt_scrape(db: AsyncIOMotorDatabase = Depends(get_db)):
+async def trigger_chatgpt_scrape(
+    db: AsyncIOMotorDatabase = Depends(get_db),
+    user: AuthUser = Depends(get_current_user),
+):
     try:
         result = await scrape_chatgpt()
     except Exception as e:
@@ -68,7 +75,7 @@ async def trigger_chatgpt_scrape(db: AsyncIOMotorDatabase = Depends(get_db)):
         return {'login_required': True, 'message': '크롬에서 chatgpt.com 로그인이 필요합니다.'}
 
     repo = AIServiceRepository(db)
-    service = await repo.find_by_name('ChatGPT')
+    service = await repo.find_by_name('ChatGPT', user.id)
     if service:
         update_data = {}
 
@@ -83,13 +90,16 @@ async def trigger_chatgpt_scrape(db: AsyncIOMotorDatabase = Depends(get_db)):
             update_data['next_billing_date'] = result['next_billing_date']
 
         if update_data:
-            await repo.update(service.id, update_data)
+            await repo.update(service.id, update_data, user.id)
 
     return {k: v for k, v in result.items() if k != '_raw'}
 
 
 @router.post("/codex")
-async def trigger_codex_scrape(db: AsyncIOMotorDatabase = Depends(get_db)):
+async def trigger_codex_scrape(
+    db: AsyncIOMotorDatabase = Depends(get_db),
+    user: AuthUser = Depends(get_current_user),
+):
     try:
         result = await scrape_codex()
     except Exception as e:
@@ -99,7 +109,7 @@ async def trigger_codex_scrape(db: AsyncIOMotorDatabase = Depends(get_db)):
         return {'login_required': True, 'message': '크롬에서 chatgpt.com 로그인이 필요합니다.'}
 
     repo = AIServiceRepository(db)
-    service = await repo.find_by_name('Codex')
+    service = await repo.find_by_name('Codex', user.id)
     if service:
         update_data = {}
 
@@ -123,13 +133,16 @@ async def trigger_codex_scrape(db: AsyncIOMotorDatabase = Depends(get_db)):
             update_data['usage_unit'] = f"% (5h 창{reset_label})"
 
         if update_data:
-            await repo.update(service.id, update_data)
+            await repo.update(service.id, update_data, user.id)
 
     return result
 
 
 @router.post("/gemini")
-async def trigger_gemini_scrape(db: AsyncIOMotorDatabase = Depends(get_db)):
+async def trigger_gemini_scrape(
+    db: AsyncIOMotorDatabase = Depends(get_db),
+    user: AuthUser = Depends(get_current_user),
+):
     try:
         result = await scrape_gemini()
     except Exception as e:
@@ -139,7 +152,7 @@ async def trigger_gemini_scrape(db: AsyncIOMotorDatabase = Depends(get_db)):
         return {'login_required': True, 'message': '크롬에서 gemini.google.com 로그인이 필요합니다.'}
 
     repo = AIServiceRepository(db)
-    service = await repo.find_by_name('Gemini')
+    service = await repo.find_by_name('Gemini', user.id)
     if service:
         update_data = {}
 
@@ -154,13 +167,16 @@ async def trigger_gemini_scrape(db: AsyncIOMotorDatabase = Depends(get_db)):
             update_data['next_billing_date'] = result['next_billing_date']
 
         if update_data:
-            await repo.update(service.id, update_data)
+            await repo.update(service.id, update_data, user.id)
 
     return result
 
 
 @router.post("/cursor")
-async def trigger_cursor_scrape(db: AsyncIOMotorDatabase = Depends(get_db)):
+async def trigger_cursor_scrape(
+    db: AsyncIOMotorDatabase = Depends(get_db),
+    user: AuthUser = Depends(get_current_user),
+):
     try:
         result = await scrape_cursor()
     except Exception as e:
@@ -170,7 +186,7 @@ async def trigger_cursor_scrape(db: AsyncIOMotorDatabase = Depends(get_db)):
         return {'login_required': True, 'message': '크롬에서 cursor.com 로그인이 필요합니다.'}
 
     repo = AIServiceRepository(db)
-    service = await repo.find_by_name('Cursor')
+    service = await repo.find_by_name('Cursor', user.id)
     if service:
         update_data = {}
 
@@ -193,7 +209,7 @@ async def trigger_cursor_scrape(db: AsyncIOMotorDatabase = Depends(get_db)):
             update_data['usage_unit'] = result.get('usage_unit', '%')
 
         if update_data:
-            await repo.update(service.id, update_data)
+            await repo.update(service.id, update_data, user.id)
 
     return result
 

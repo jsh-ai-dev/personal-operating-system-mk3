@@ -11,6 +11,7 @@ from pydantic import BaseModel
 
 from app.adapter.mongodb.conversation_repository import ConversationRepository
 from app.application.chat_service import CLAUDE_PRICING, GEMINI_LIMITS, GEMINI_PRICING, OPENAI_PRICING, ChatService
+from app.core.auth import AuthUser, get_current_user
 from app.core.config import settings
 from app.core.dependencies import get_db
 
@@ -58,68 +59,92 @@ class QuizRequest(BaseModel):
 
 
 @router.get("/conversations")
-async def list_conversations(include_hidden: bool = False, svc: ChatService = Depends(_get_svc)):
-    convs = await svc.list_conversations(include_hidden=include_hidden)
+async def list_conversations(
+    include_hidden: bool = False,
+    svc: ChatService = Depends(_get_svc),
+    user: AuthUser = Depends(get_current_user),
+):
+    convs = await svc.list_conversations(user.id, include_hidden=include_hidden)
     return [asdict(c) for c in convs]
 
 
 @router.patch("/conversations/{id}")
 async def update_conversation(
-    id: str, body: UpdateConversationRequest, svc: ChatService = Depends(_get_svc)
+    id: str,
+    body: UpdateConversationRequest,
+    svc: ChatService = Depends(_get_svc),
+    user: AuthUser = Depends(get_current_user),
 ):
-    await svc.set_hidden(id, body.is_hidden)
+    await svc.set_hidden(user.id, id, body.is_hidden)
     return {"ok": True}
 
 
 @router.patch("/messages/{id}")
 async def update_message(
-    id: str, body: UpdateMessageRequest, svc: ChatService = Depends(_get_svc)
+    id: str,
+    body: UpdateMessageRequest,
+    svc: ChatService = Depends(_get_svc),
+    user: AuthUser = Depends(get_current_user),
 ):
     if body.is_hidden is not None:
-        await svc.set_message_hidden(id, body.is_hidden)
+        await svc.set_message_hidden(user.id, id, body.is_hidden)
     if body.content is not None:
-        await svc.update_message_content(id, body.content)
+        await svc.update_message_content(user.id, id, body.content)
     return {"ok": True}
 
 
 @router.get("/conversations/{id}")
-async def get_conversation(id: str, svc: ChatService = Depends(_get_svc)):
-    conv = await svc.repo.find_conversation_by_id(id)
+async def get_conversation(
+    id: str,
+    svc: ChatService = Depends(_get_svc),
+    user: AuthUser = Depends(get_current_user),
+):
+    conv = await svc.repo.find_conversation_by_id(id, user.id)
     if not conv:
         raise HTTPException(status_code=404, detail="대화를 찾을 수 없습니다")
     return asdict(conv)
 
 
 @router.get("/conversations/{id}/messages")
-async def get_messages(id: str, svc: ChatService = Depends(_get_svc)):
-    msgs = await svc.get_messages(id)
+async def get_messages(
+    id: str,
+    svc: ChatService = Depends(_get_svc),
+    user: AuthUser = Depends(get_current_user),
+):
+    msgs = await svc.get_messages(user.id, id)
     return [asdict(m) for m in msgs]
 
 
 @router.post("/conversations/{id}/summary")
 async def summarize_conversation(
-    id: str, body: SummarizeRequest, svc: ChatService = Depends(_get_svc)
+    id: str,
+    body: SummarizeRequest,
+    svc: ChatService = Depends(_get_svc),
+    user: AuthUser = Depends(get_current_user),
 ):
     if body.model not in OPENAI_PRICING:
         raise HTTPException(status_code=400, detail=f"지원하지 않는 모델: {body.model}")
     if not settings.openai_api_key:
         raise HTTPException(status_code=500, detail="OPENAI_API_KEY가 설정되지 않았습니다")
     try:
-        return await svc.summarize_conversation(id, body.model)
+        return await svc.summarize_conversation(user.id, id, body.model)
     except ValueError as e:
         raise HTTPException(status_code=404, detail=str(e))
 
 
 @router.post("/conversations/{id}/quiz")
 async def generate_quiz(
-    id: str, body: QuizRequest, svc: ChatService = Depends(_get_svc)
+    id: str,
+    body: QuizRequest,
+    svc: ChatService = Depends(_get_svc),
+    user: AuthUser = Depends(get_current_user),
 ):
     if body.model not in OPENAI_PRICING:
         raise HTTPException(status_code=400, detail=f"지원하지 않는 모델: {body.model}")
     if not settings.openai_api_key:
         raise HTTPException(status_code=500, detail="OPENAI_API_KEY가 설정되지 않았습니다")
     try:
-        return await svc.generate_quiz(id, body.model)
+        return await svc.generate_quiz(user.id, id, body.model)
     except ValueError as e:
         raise HTTPException(status_code=404, detail=str(e))
 
@@ -134,7 +159,11 @@ async def get_gemini_models():
 
 
 @router.post("/gemini")
-async def chat_gemini(body: GeminiChatRequest, svc: ChatService = Depends(_get_svc)):
+async def chat_gemini(
+    body: GeminiChatRequest,
+    svc: ChatService = Depends(_get_svc),
+    user: AuthUser = Depends(get_current_user),
+):
     if body.model not in GEMINI_PRICING:
         raise HTTPException(status_code=400, detail=f"지원하지 않는 모델: {body.model}")
     if not settings.gemini_api_key:
@@ -143,7 +172,7 @@ async def chat_gemini(body: GeminiChatRequest, svc: ChatService = Depends(_get_s
         raise HTTPException(status_code=400, detail="메시지를 입력해주세요")
 
     return StreamingResponse(
-        svc.chat_gemini_stream(body.conversation_id, body.model, body.message, settings.gemini_api_key),
+        svc.chat_gemini_stream(user.id, body.conversation_id, body.model, body.message, settings.gemini_api_key),
         media_type="text/event-stream",
         headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
     )
@@ -159,7 +188,11 @@ async def get_claude_models():
 
 
 @router.post("/claude")
-async def chat_claude(body: ClaudeChatRequest, svc: ChatService = Depends(_get_svc)):
+async def chat_claude(
+    body: ClaudeChatRequest,
+    svc: ChatService = Depends(_get_svc),
+    user: AuthUser = Depends(get_current_user),
+):
     if body.model not in CLAUDE_PRICING:
         raise HTTPException(status_code=400, detail=f"지원하지 않는 모델: {body.model}")
     if not settings.anthropic_api_key:
@@ -168,7 +201,7 @@ async def chat_claude(body: ClaudeChatRequest, svc: ChatService = Depends(_get_s
         raise HTTPException(status_code=400, detail="메시지를 입력해주세요")
 
     return StreamingResponse(
-        svc.chat_claude_stream(body.conversation_id, body.model, body.message, settings.anthropic_api_key),
+        svc.chat_claude_stream(user.id, body.conversation_id, body.model, body.message, settings.anthropic_api_key),
         media_type="text/event-stream",
         headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
     )
@@ -184,7 +217,11 @@ async def get_openai_models():
 
 
 @router.post("/openai")
-async def chat_openai(body: OpenAIChatRequest, svc: ChatService = Depends(_get_svc)):
+async def chat_openai(
+    body: OpenAIChatRequest,
+    svc: ChatService = Depends(_get_svc),
+    user: AuthUser = Depends(get_current_user),
+):
     if body.model not in OPENAI_PRICING:
         raise HTTPException(status_code=400, detail=f"지원하지 않는 모델: {body.model}")
     if not settings.openai_api_key:
@@ -193,7 +230,7 @@ async def chat_openai(body: OpenAIChatRequest, svc: ChatService = Depends(_get_s
         raise HTTPException(status_code=400, detail="메시지를 입력해주세요")
 
     return StreamingResponse(
-        svc.chat_openai_stream(body.conversation_id, body.model, body.message),
+        svc.chat_openai_stream(user.id, body.conversation_id, body.model, body.message),
         media_type="text/event-stream",
         headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
     )

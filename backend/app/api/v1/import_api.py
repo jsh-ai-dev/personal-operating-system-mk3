@@ -6,6 +6,7 @@ from motor.motor_asyncio import AsyncIOMotorDatabase
 
 from app.adapter.mongodb.conversation_repository import ConversationRepository
 from app.application.import_service import ImportService
+from app.core.auth import AuthUser, get_current_user
 from app.core.config import settings
 from app.core.dependencies import get_db
 
@@ -17,20 +18,32 @@ def _get_svc(db: AsyncIOMotorDatabase = Depends(get_db)) -> ImportService:
 
 
 @router.post("/jetbrains-codex")
-async def import_jetbrains_codex(svc: ImportService = Depends(_get_svc)):
-    return await svc.import_jetbrains_codex(settings.jetbrains_aia_path)
+async def import_jetbrains_codex(
+    svc: ImportService = Depends(_get_svc),
+    user: AuthUser = Depends(get_current_user),
+):
+    return await svc.import_jetbrains_codex(user.id, settings.jetbrains_aia_path)
 
 
 @router.post("/claude-code")
-async def import_claude_code(svc: ImportService = Depends(_get_svc)):
-    return await svc.import_claude_code(settings.claude_code_path)
+async def import_claude_code(
+    svc: ImportService = Depends(_get_svc),
+    user: AuthUser = Depends(get_current_user),
+):
+    return await svc.import_claude_code(user.id, settings.claude_code_path)
 
 
 @router.post("/claude-export")
-async def import_claude_export(svc: ImportService = Depends(_get_svc)):
-    return await svc.import_claude_export(settings.claude_export_path)
+async def import_claude_export(
+    svc: ImportService = Depends(_get_svc),
+    user: AuthUser = Depends(get_current_user),
+):
+    return await svc.import_claude_export(user.id, settings.claude_export_path)
 
 
 @router.post("/gemini-takeout")
-async def import_gemini_takeout(svc: ImportService = Depends(_get_svc)):
-    return await svc.import_gemini_takeout(settings.gemini_takeout_path)
+async def import_gemini_takeout(
+    svc: ImportService = Depends(_get_svc),
+    user: AuthUser = Depends(get_current_user),
+):
+    return await svc.import_gemini_takeout(user.id, settings.gemini_takeout_path)

@@ -60,30 +60,30 @@ class ConversationRepository:
             is_hidden=doc.get("is_hidden", False),
         )
 
-    async def find_all_conversations(self, include_hidden: bool = False) -> list[Conversation]:
+    async def find_all_conversations(self, owner_id: str, include_hidden: bool = False) -> list[Conversation]:
         # is_hidden이 True인 문서는 기본적으로 제외 (없는 필드도 False로 처리)
-        query = {} if include_hidden else {"is_hidden": {"$ne": True}}
+        query = {"owner_id": owner_id} if include_hidden else {"owner_id": owner_id, "is_hidden": {"$ne": True}}
         docs = await self.conversations.find(query).sort("updated_at", -1).to_list(None)
         return [self._to_conversation(doc) for doc in docs]
 
-    async def set_hidden(self, id: str, is_hidden: bool) -> None:
+    async def set_hidden(self, id: str, owner_id: str, is_hidden: bool) -> None:
         try:
             await self.conversations.update_one(
-                {"_id": ObjectId(id)},
+                {"_id": ObjectId(id), "owner_id": owner_id},
                 {"$set": {"is_hidden": is_hidden, "updated_at": datetime.now(timezone.utc)}},
             )
         except InvalidId:
             pass
 
-    async def find_conversation_by_id(self, id: str) -> Conversation | None:
+    async def find_conversation_by_id(self, id: str, owner_id: str) -> Conversation | None:
         try:
-            doc = await self.conversations.find_one({"_id": ObjectId(id)})
+            doc = await self.conversations.find_one({"_id": ObjectId(id), "owner_id": owner_id})
         except InvalidId:
             return None
         return self._to_conversation(doc) if doc else None
 
     async def create_conversation(
-        self, provider: str, model: str, title: str, source_id: str | None = None
+        self, provider: str, model: str, title: str, owner_id: str, source_id: str | None = None
     ) -> Conversation:
         now = datetime.now(timezone.utc)
         result = await self.conversations.insert_one({
@@ -100,17 +100,18 @@ class ConversationRepository:
             "tags": [],
             "qdrant_id": None,
             "source_id": source_id,
+            "owner_id": owner_id,
         })
-        return await self.find_conversation_by_id(str(result.inserted_id))
+        return await self.find_conversation_by_id(str(result.inserted_id), owner_id)
 
-    async def find_conversation_by_source_id(self, source_id: str) -> Conversation | None:
-        doc = await self.conversations.find_one({"source_id": source_id})
+    async def find_conversation_by_source_id(self, source_id: str, owner_id: str) -> Conversation | None:
+        doc = await self.conversations.find_one({"source_id": source_id, "owner_id": owner_id})
         return self._to_conversation(doc) if doc else None
 
-    async def update_summary(self, id: str, summary: str, model: str, cost_usd: float) -> None:
+    async def update_summary(self, id: str, owner_id: str, summary: str, model: str, cost_usd: float) -> None:
         try:
             await self.conversations.update_one(
-                {"_id": ObjectId(id)},
+                {"_id": ObjectId(id), "owner_id": owner_id},
                 {"$set": {
                     "summary": summary,
                     "summary_model": model,
@@ -121,10 +122,10 @@ class ConversationRepository:
         except InvalidId:
             pass
 
-    async def update_quiz(self, id: str, quiz: list, model: str, cost_usd: float) -> None:
+    async def update_quiz(self, id: str, owner_id: str, quiz: list, model: str, cost_usd: float) -> None:
         try:
             await self.conversations.update_one(
-                {"_id": ObjectId(id)},
+                {"_id": ObjectId(id), "owner_id": owner_id},
                 {"$set": {
                     "quiz": quiz,
                     "quiz_model": model,
@@ -135,39 +136,39 @@ class ConversationRepository:
         except InvalidId:
             pass
 
-    async def set_message_hidden(self, message_id: str, is_hidden: bool) -> None:
+    async def set_message_hidden(self, message_id: str, owner_id: str, is_hidden: bool) -> None:
         try:
             await self.messages.update_one(
-                {"_id": ObjectId(message_id)},
+                {"_id": ObjectId(message_id), "owner_id": owner_id},
                 {"$set": {"is_hidden": is_hidden}},
             )
         except InvalidId:
             pass
 
-    async def update_message_content(self, message_id: str, content: str) -> None:
+    async def update_message_content(self, message_id: str, owner_id: str, content: str) -> None:
         try:
             await self.messages.update_one(
-                {"_id": ObjectId(message_id)},
+                {"_id": ObjectId(message_id), "owner_id": owner_id},
                 {"$set": {"content": content}},
             )
         except InvalidId:
             pass
 
-    async def set_message_count(self, id: str, count: int) -> None:
+    async def set_message_count(self, id: str, owner_id: str, count: int) -> None:
         try:
             await self.conversations.update_one(
-                {"_id": ObjectId(id)},
+                {"_id": ObjectId(id), "owner_id": owner_id},
                 {"$set": {"message_count": count, "updated_at": datetime.now(timezone.utc)}},
             )
         except InvalidId:
             pass
 
     async def update_conversation_stats(
-        self, id: str, tokens_input: int, tokens_output: int, cost_usd: float
+        self, id: str, owner_id: str, tokens_input: int, tokens_output: int, cost_usd: float
     ) -> None:
         try:
             await self.conversations.update_one(
-                {"_id": ObjectId(id)},
+                {"_id": ObjectId(id), "owner_id": owner_id},
                 {
                     "$inc": {
                         "message_count": 2,
@@ -181,17 +182,20 @@ class ConversationRepository:
         except InvalidId:
             pass
 
-    async def find_messages_by_conversation(self, conversation_id: str) -> list[Message]:
+    async def find_messages_by_conversation(self, conversation_id: str, owner_id: str) -> list[Message]:
         try:
             oid = ObjectId(conversation_id)
         except InvalidId:
             return []
-        docs = await self.messages.find({"conversation_id": oid}).sort("created_at", 1).to_list(None)
+        docs = await self.messages.find(
+            {"conversation_id": oid, "owner_id": owner_id}
+        ).sort("created_at", 1).to_list(None)
         return [self._to_message(doc) for doc in docs]
 
     async def insert_message(
         self,
         conversation_id: str,
+        owner_id: str,
         role: str,
         content: str,
         model: str | None = None,
@@ -203,6 +207,7 @@ class ConversationRepository:
         now = created_at or datetime.now(timezone.utc)
         result = await self.messages.insert_one({
             "conversation_id": ObjectId(conversation_id),
+            "owner_id": owner_id,
             "role": role,
             "content": content,
             "model": model,

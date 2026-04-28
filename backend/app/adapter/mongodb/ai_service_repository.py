@@ -29,36 +29,45 @@ class AIServiceRepository:
             notes=doc.get("notes"),
         )
 
-    async def find_all(self) -> list[AIService]:
-        docs = await self.col.find().sort("name", 1).to_list(None)
+    async def find_all(self, owner_id: str) -> list[AIService]:
+        docs = await self.col.find({"owner_id": owner_id}).sort("name", 1).to_list(None)
         return [self._to_domain(doc) for doc in docs]
 
-    async def find_by_name(self, name: str) -> AIService | None:
+    async def find_by_name(self, name: str, owner_id: str) -> AIService | None:
         # 이름으로 서비스 조회 (대소문자 구분 없음)
-        doc = await self.col.find_one({'name': {'$regex': f'^{name}$', '$options': 'i'}})
+        doc = await self.col.find_one(
+            {
+                "owner_id": owner_id,
+                "name": {"$regex": f"^{name}$", "$options": "i"},
+            }
+        )
         return self._to_domain(doc) if doc else None
 
-    async def find_by_id(self, id: str) -> AIService | None:
+    async def find_by_id(self, id: str, owner_id: str) -> AIService | None:
         try:
-            doc = await self.col.find_one({"_id": ObjectId(id)})
+            doc = await self.col.find_one({"_id": ObjectId(id), "owner_id": owner_id})
         except InvalidId:
             return None
         return self._to_domain(doc) if doc else None
 
-    async def insert(self, data: dict) -> AIService:
-        result = await self.col.insert_one(data)
-        return await self.find_by_id(str(result.inserted_id))
+    async def insert(self, data: dict, owner_id: str) -> AIService:
+        payload = {**data, "owner_id": owner_id}
+        result = await self.col.insert_one(payload)
+        return await self.find_by_id(str(result.inserted_id), owner_id)
 
-    async def update(self, id: str, data: dict) -> AIService | None:
+    async def update(self, id: str, data: dict, owner_id: str) -> AIService | None:
         try:
-            await self.col.update_one({"_id": ObjectId(id)}, {"$set": data})
+            await self.col.update_one(
+                {"_id": ObjectId(id), "owner_id": owner_id},
+                {"$set": data},
+            )
         except InvalidId:
             return None
-        return await self.find_by_id(id)
+        return await self.find_by_id(id, owner_id)
 
-    async def delete(self, id: str) -> bool:
+    async def delete(self, id: str, owner_id: str) -> bool:
         try:
-            result = await self.col.delete_one({"_id": ObjectId(id)})
+            result = await self.col.delete_one({"_id": ObjectId(id), "owner_id": owner_id})
         except InvalidId:
             return False
         return result.deleted_count > 0

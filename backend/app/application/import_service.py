@@ -14,13 +14,13 @@ class ImportService:
     def __init__(self, repo: ConversationRepository):
         self.repo = repo
 
-    async def import_jetbrains_codex(self, aia_path: str) -> dict:
+    async def import_jetbrains_codex(self, owner_id: str, aia_path: str) -> dict:
         sessions = scan_sessions(aia_path)
         imported = 0
         skipped = 0
 
         for session in sessions:
-            existing = await self.repo.find_conversation_by_source_id(session.session_id)
+            existing = await self.repo.find_conversation_by_source_id(session.session_id, owner_id)
             if existing:
                 skipped += 1
                 continue
@@ -29,28 +29,30 @@ class ImportService:
                 provider="jetbrains",
                 model="codex",
                 title=session.title,
+                owner_id=owner_id,
                 source_id=session.session_id,
             )
 
             for msg in session.messages:
                 await self.repo.insert_message(
                     conversation_id=conv.id,
+                    owner_id=owner_id,
                     role=msg["role"],
                     content=msg["content"],
                 )
 
-            await self.repo.set_message_count(conv.id, len(session.messages))
+            await self.repo.set_message_count(conv.id, owner_id, len(session.messages))
             imported += 1
 
         return {"imported": imported, "skipped": skipped, "total": len(sessions)}
 
-    async def import_claude_code(self, code_path: str) -> dict:
+    async def import_claude_code(self, owner_id: str, code_path: str) -> dict:
         sessions = scan_claude_code_sessions(code_path)
         imported = 0
         skipped = 0
 
         for session in sessions:
-            existing = await self.repo.find_conversation_by_source_id(session.session_id)
+            existing = await self.repo.find_conversation_by_source_id(session.session_id, owner_id)
             if existing:
                 skipped += 1
                 continue
@@ -59,29 +61,31 @@ class ImportService:
                 provider="anthropic",
                 model="claude-code",
                 title=session.title,
+                owner_id=owner_id,
                 source_id=session.session_id,
             )
 
             for msg in session.messages:
                 await self.repo.insert_message(
                     conversation_id=conv.id,
+                    owner_id=owner_id,
                     role=msg["role"],
                     content=msg["content"],
                     created_at=msg["created_at"],
                 )
 
-            await self.repo.set_message_count(conv.id, len(session.messages))
+            await self.repo.set_message_count(conv.id, owner_id, len(session.messages))
             imported += 1
 
         return {"imported": imported, "skipped": skipped, "total": len(sessions)}
 
-    async def import_claude_export(self, export_path: str) -> dict:
+    async def import_claude_export(self, owner_id: str, export_path: str) -> dict:
         sessions = parse_claude_export(Path(export_path))
         imported = 0
         skipped = 0
 
         for session in sessions:
-            existing = await self.repo.find_conversation_by_source_id(session.session_id)
+            existing = await self.repo.find_conversation_by_source_id(session.session_id, owner_id)
             if existing:
                 skipped += 1
                 continue
@@ -90,29 +94,31 @@ class ImportService:
                 provider="anthropic",
                 model="claude",
                 title=session.title,
+                owner_id=owner_id,
                 source_id=session.session_id,
             )
 
             for msg in session.messages:
                 await self.repo.insert_message(
                     conversation_id=conv.id,
+                    owner_id=owner_id,
                     role=msg["role"],
                     content=msg["content"],
                     created_at=msg["created_at"],
                 )
 
-            await self.repo.set_message_count(conv.id, len(session.messages))
+            await self.repo.set_message_count(conv.id, owner_id, len(session.messages))
             imported += 1
 
         return {"imported": imported, "skipped": skipped, "total": len(sessions)}
 
-    async def import_gemini_takeout(self, takeout_path: str) -> dict:
+    async def import_gemini_takeout(self, owner_id: str, takeout_path: str) -> dict:
         sessions = parse_takeout(Path(takeout_path))
         imported = 0
         skipped = 0
 
         for session in sessions:
-            existing = await self.repo.find_conversation_by_source_id(session.session_id)
+            existing = await self.repo.find_conversation_by_source_id(session.session_id, owner_id)
             if existing:
                 skipped += 1
                 continue
@@ -121,18 +127,20 @@ class ImportService:
                 provider="google",
                 model="gemini",
                 title=session.title,
+                owner_id=owner_id,
                 source_id=session.session_id,
             )
 
             for msg in session.messages:
                 await self.repo.insert_message(
                     conversation_id=conv.id,
+                    owner_id=owner_id,
                     role=msg["role"],
                     content=msg["content"],
                     created_at=msg["created_at"],
                 )
 
-            await self.repo.set_message_count(conv.id, len(session.messages))
+            await self.repo.set_message_count(conv.id, owner_id, len(session.messages))
             imported += 1
 
         return {"imported": imported, "skipped": skipped, "total": len(sessions)}

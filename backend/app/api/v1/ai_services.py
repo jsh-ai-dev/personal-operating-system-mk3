@@ -9,6 +9,7 @@ from pydantic import BaseModel, Field
 
 from app.adapter.mongodb.ai_service_repository import AIServiceRepository
 from app.application.ai_service_service import AIServiceService
+from app.core.auth import AuthUser, get_current_user
 from app.core.dependencies import get_db
 
 router = APIRouter(prefix="/ai-services", tags=["ai-services"])
@@ -39,35 +40,55 @@ def _get_svc(db: AsyncIOMotorDatabase = Depends(get_db)) -> AIServiceService:
 
 
 @router.get("", response_model=list[AIServiceResponse])
-async def list_ai_services(svc: AIServiceService = Depends(_get_svc)):
-    return [asdict(s) for s in await svc.list()]
+async def list_ai_services(
+    svc: AIServiceService = Depends(_get_svc),
+    user: AuthUser = Depends(get_current_user),
+):
+    return [asdict(s) for s in await svc.list(user.id)]
 
 
 @router.get("/{id}", response_model=AIServiceResponse)
-async def get_ai_service(id: str, svc: AIServiceService = Depends(_get_svc)):
-    service = await svc.get(id)
+async def get_ai_service(
+    id: str,
+    svc: AIServiceService = Depends(_get_svc),
+    user: AuthUser = Depends(get_current_user),
+):
+    service = await svc.get(id, user.id)
     if not service:
         raise HTTPException(status_code=404, detail="AI service not found")
     return asdict(service)
 
 
 @router.post("", response_model=AIServiceResponse, status_code=201)
-async def create_ai_service(body: AIServiceBody, svc: AIServiceService = Depends(_get_svc)):
-    service = await svc.create(body.model_dump())
+async def create_ai_service(
+    body: AIServiceBody,
+    svc: AIServiceService = Depends(_get_svc),
+    user: AuthUser = Depends(get_current_user),
+):
+    service = await svc.create(body.model_dump(), user.id)
     return asdict(service)
 
 
 @router.put("/{id}", response_model=AIServiceResponse)
-async def update_ai_service(id: str, body: AIServiceBody, svc: AIServiceService = Depends(_get_svc)):
-    service = await svc.update(id, body.model_dump())
+async def update_ai_service(
+    id: str,
+    body: AIServiceBody,
+    svc: AIServiceService = Depends(_get_svc),
+    user: AuthUser = Depends(get_current_user),
+):
+    service = await svc.update(id, body.model_dump(), user.id)
     if not service:
         raise HTTPException(status_code=404, detail="AI service not found")
     return asdict(service)
 
 
 @router.delete("/{id}", status_code=204)
-async def delete_ai_service(id: str, svc: AIServiceService = Depends(_get_svc)):
-    deleted = await svc.delete(id)
+async def delete_ai_service(
+    id: str,
+    svc: AIServiceService = Depends(_get_svc),
+    user: AuthUser = Depends(get_current_user),
+):
+    deleted = await svc.delete(id, user.id)
     if not deleted:
         raise HTTPException(status_code=404, detail="AI service not found")
     return Response(status_code=204)

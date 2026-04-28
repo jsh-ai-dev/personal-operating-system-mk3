@@ -9,17 +9,17 @@ class AIServiceService:
     def __init__(self, repo: AIServiceRepository):
         self.repo = repo
 
-    async def list(self) -> list[AIService]:
-        return await self.repo.find_all()
+    async def list(self, owner_id: str) -> list[AIService]:
+        return await self.repo.find_all(owner_id)
 
-    async def get(self, id: str) -> AIService | None:
-        return await self.repo.find_by_id(id)
+    async def get(self, id: str, owner_id: str) -> AIService | None:
+        return await self.repo.find_by_id(id, owner_id)
 
-    async def create(self, data: dict) -> AIService:
-        return await self.repo.insert(data)
+    async def create(self, data: dict, owner_id: str) -> AIService:
+        return await self.repo.insert(data, owner_id)
 
-    async def update(self, id: str, data: dict) -> AIService | None:
-        return await self.repo.update(id, data)
+    async def update(self, id: str, data: dict, owner_id: str) -> AIService | None:
+        return await self.repo.update(id, data, owner_id)
 
-    async def delete(self, id: str) -> bool:
-        return await self.repo.delete(id)
+    async def delete(self, id: str, owner_id: str) -> bool:
+        return await self.repo.delete(id, owner_id)
