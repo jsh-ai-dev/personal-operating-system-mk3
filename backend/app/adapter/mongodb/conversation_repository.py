@@ -17,7 +17,10 @@ class ConversationRepository:
 
     def _to_conversation(self, doc: dict) -> Conversation:
         def iso(v):
-            return v.isoformat() if isinstance(v, datetime) else v
+            # Motor는 timezone 없는 naive datetime을 반환하므로 UTC임을 명시해 JS가 올바르게 변환하도록 함
+            if isinstance(v, datetime):
+                return v.replace(tzinfo=timezone.utc).isoformat() if v.tzinfo is None else v.isoformat()
+            return v
 
         return Conversation(
             id=str(doc["_id"]),
@@ -44,7 +47,9 @@ class ConversationRepository:
 
     def _to_message(self, doc: dict) -> Message:
         def iso(v):
-            return v.isoformat() if isinstance(v, datetime) else v
+            if isinstance(v, datetime):
+                return v.replace(tzinfo=timezone.utc).isoformat() if v.tzinfo is None else v.isoformat()
+            return v
 
         return Message(
             id=str(doc["_id"]),
