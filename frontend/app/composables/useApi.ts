@@ -5,5 +5,6 @@
 // 사용 예: const api = useApi()  →  api('/api/v1/health')
 export const useApi = () => {
   const config = useRuntimeConfig()
-  return $fetch.create({ baseURL: config.public.apiBase })
+  // mk2 로그인 쿠키(pos_session)를 함께 보내야 mk3 backend에서 인증 가능
+  return $fetch.create({ baseURL: config.public.apiBase, credentials: 'include' })
 }

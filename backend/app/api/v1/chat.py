@@ -93,6 +93,30 @@ async def update_message(
     return {"ok": True}
 
 
+@router.delete("/conversations/{id}")
+async def delete_conversation(
+    id: str,
+    svc: ChatService = Depends(_get_svc),
+    user: AuthUser = Depends(get_current_user),
+):
+    ok = await svc.delete_conversation(user.id, id)
+    if not ok:
+        raise HTTPException(status_code=404, detail="대화를 찾을 수 없습니다")
+    return {"ok": True}
+
+
+@router.delete("/messages/{id}")
+async def delete_message(
+    id: str,
+    svc: ChatService = Depends(_get_svc),
+    user: AuthUser = Depends(get_current_user),
+):
+    ok = await svc.delete_message(user.id, id)
+    if not ok:
+        raise HTTPException(status_code=404, detail="메시지를 찾을 수 없습니다")
+    return {"ok": True}
+
+
 @router.get("/conversations/{id}")
 async def get_conversation(
     id: str,

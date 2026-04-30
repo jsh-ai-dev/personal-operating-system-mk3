@@ -139,6 +139,12 @@ class ChatService:
     async def update_message_content(self, owner_id: str, message_id: str, content: str) -> None:
         await self.repo.update_message_content(message_id, owner_id, content)
 
+    async def delete_conversation(self, owner_id: str, conversation_id: str) -> bool:
+        return await self.repo.delete_conversation(conversation_id, owner_id)
+
+    async def delete_message(self, owner_id: str, message_id: str) -> bool:
+        return await self.repo.delete_message(message_id, owner_id)
+
     async def summarize_conversation(self, owner_id: str, conversation_id: str, model: str) -> dict:
         conversation = await self.repo.find_conversation_by_id(conversation_id, owner_id)
         if not conversation:

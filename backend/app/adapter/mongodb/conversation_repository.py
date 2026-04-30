@@ -63,7 +63,9 @@ class ConversationRepository:
     async def find_all_conversations(self, owner_id: str, include_hidden: bool = False) -> list[Conversation]:
         # is_hidden이 True인 문서는 기본적으로 제외 (없는 필드도 False로 처리)
         query = {"owner_id": owner_id} if include_hidden else {"owner_id": owner_id, "is_hidden": {"$ne": True}}
-        docs = await self.conversations.find(query).sort("updated_at", -1).to_list(None)
+        # 목록 정렬은 생성일 기준(최신 생성순)으로 고정한다.
+        # 숨김/복원/수정 같은 후속 작업이 목록 순서를 바꾸지 않게 하기 위함.
+        docs = await self.conversations.find(query).sort("created_at", -1).to_list(None)
         return [self._to_conversation(doc) for doc in docs]
 
     async def set_hidden(self, id: str, owner_id: str, is_hidden: bool) -> None:
@@ -153,6 +155,36 @@ class ConversationRepository:
             )
         except InvalidId:
             pass
+
+    async def delete_conversation(self, conversation_id: str, owner_id: str) -> bool:
+        try:
+            conv_oid = ObjectId(conversation_id)
+        except InvalidId:
+            return False
+        result = await self.conversations.delete_one({"_id": conv_oid, "owner_id": owner_id})
+        if result.deleted_count == 0:
+            return False
+        await self.messages.delete_many({"conversation_id": conv_oid, "owner_id": owner_id})
+        return True
+
+    async def delete_message(self, message_id: str, owner_id: str) -> bool:
+        try:
+            msg_oid = ObjectId(message_id)
+        except InvalidId:
+            return False
+        doc = await self.messages.find_one({"_id": msg_oid, "owner_id": owner_id}, {"conversation_id": 1})
+        if not doc:
+            return False
+        deleted = await self.messages.delete_one({"_id": msg_oid, "owner_id": owner_id})
+        if deleted.deleted_count == 0:
+            return False
+        conv_id = doc.get("conversation_id")
+        if isinstance(conv_id, ObjectId):
+            await self.conversations.update_one(
+                {"_id": conv_id, "owner_id": owner_id},
+                {"$inc": {"message_count": -1}, "$set": {"updated_at": datetime.now(timezone.utc)}},
+            )
+        return True
 
     async def set_message_count(self, id: str, owner_id: str, count: int) -> None:
         try:

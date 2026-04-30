@@ -86,11 +86,17 @@ export const useChat = () => {
   const setHidden = (id: string, isHidden: boolean) =>
     api(`/api/v1/chat/conversations/${id}`, { method: 'PATCH', body: { is_hidden: isHidden } })
 
+  const deleteConversation = (id: string) =>
+    api(`/api/v1/chat/conversations/${id}`, { method: 'DELETE' })
+
   const setMessageHidden = (id: string, isHidden: boolean) =>
     api(`/api/v1/chat/messages/${id}`, { method: 'PATCH', body: { is_hidden: isHidden } })
 
   const updateMessageContent = (id: string, content: string) =>
     api(`/api/v1/chat/messages/${id}`, { method: 'PATCH', body: { content } })
+
+  const deleteMessage = (id: string) =>
+    api(`/api/v1/chat/messages/${id}`, { method: 'DELETE' })
 
   const getConversation = (id: string) =>
     api<Conversation>(`/api/v1/chat/conversations/${id}`)
@@ -200,5 +206,5 @@ export const useChat = () => {
       { method: 'POST', body: { model } },
     )
 
-  return { listConversations, getConversation, getMessages, getAllModels, chatOpenAI, chatGemini, chatClaude, summarizeConversation, generateQuiz, importJetbrainsCodex, importGeminiTakeout, importClaudeExport, importClaudeCode, setHidden, setMessageHidden, updateMessageContent }
+  return { listConversations, getConversation, getMessages, getAllModels, chatOpenAI, chatGemini, chatClaude, summarizeConversation, generateQuiz, importJetbrainsCodex, importGeminiTakeout, importClaudeExport, importClaudeCode, setHidden, deleteConversation, setMessageHidden, updateMessageContent, deleteMessage }
 }

@@ -6,7 +6,7 @@ import type { AiModel, Conversation, Message } from '~/composables/useChat'
 
 const route = useRoute()
 const router = useRouter()
-const { getConversation, getMessages, getAllModels, chatOpenAI, chatGemini, chatClaude, summarizeConversation, setMessageHidden, updateMessageContent } = useChat()
+const { getConversation, getMessages, getAllModels, chatOpenAI, chatGemini, chatClaude, summarizeConversation, setMessageHidden, updateMessageContent, deleteMessage } = useChat()
 
 const toggleMessageHidden = async (msg: Message) => {
   if (msg.id.startsWith('temp-')) return
@@ -17,9 +17,17 @@ const toggleMessageHidden = async (msg: Message) => {
 const editingId = ref<string | null>(null)
 const editContent = ref('')
 
-const startEdit = (msg: Message) => {
+const fitEditHeight = (el: HTMLTextAreaElement | null) => {
+  if (!el) return
+  el.style.height = 'auto'
+  el.style.height = `${el.scrollHeight}px`
+}
+
+const startEdit = async (msg: Message) => {
   editingId.value = msg.id
   editContent.value = msg.content
+  await nextTick()
+  fitEditHeight(document.querySelector('.edit-input') as HTMLTextAreaElement | null)
 }
 
 const cancelEdit = () => {
@@ -36,6 +44,13 @@ const saveEdit = async (msg: Message) => {
   msg.content = trimmed
   editingId.value = null
   await updateMessageContent(msg.id, trimmed)
+}
+
+const removeMessage = async (msg: Message) => {
+  if (msg.id.startsWith('temp-')) return
+  if (!confirm('이 말풍선을 삭제할까요?')) return
+  await deleteMessage(msg.id)
+  messages.value = messages.value.filter((m) => m.id !== msg.id)
 }
 
 const handleEditKeydown = (e: KeyboardEvent, msg: Message) => {
@@ -281,6 +296,7 @@ const modelLabel = (m: AiModel) => {
             <textarea
               v-model="editContent"
               class="edit-input"
+              @input="fitEditHeight($event.target as HTMLTextAreaElement)"
               @keydown="handleEditKeydown($event, msg)"
               autofocus
             />
@@ -294,8 +310,9 @@ const modelLabel = (m: AiModel) => {
           <div class="bubble-wrap">
             <div class="bubble">{{ msg.content }}</div>
             <div v-if="!msg.id.startsWith('temp-')" class="msg-actions">
-              <button class="btn-msg-action" @click="startEdit(msg)" title="수정">✎</button>
-              <button class="btn-msg-action" @click="toggleMessageHidden(msg)" title="숨기기">✕</button>
+              <button class="btn-msg-action" @click="startEdit(msg)" title="수정">수정</button>
+              <button class="btn-msg-action" @click="toggleMessageHidden(msg)" title="숨기기">{{ msg.is_hidden ? '복원' : '숨김' }}</button>
+              <button class="btn-msg-action btn-msg-delete" @click="removeMessage(msg)" title="삭제">삭제</button>
             </div>
           </div>
           <div v-if="msg.role === 'assistant' && msg.cost_usd != null" class="msg-meta">
@@ -339,6 +356,9 @@ const modelLabel = (m: AiModel) => {
   max-width: 760px;
   margin: 0 auto;
   padding: 0 16px;
+  background: #fff;
+  border: 1px solid #e5e7eb;
+  border-radius: 12px;
   font-family: monospace;
 }
 .header {
@@ -377,7 +397,7 @@ const modelLabel = (m: AiModel) => {
 .message { display: flex; flex-direction: column; }
 .message.user { align-items: flex-end; }
 .message.assistant { align-items: flex-start; }
-.bubble-wrap { display: flex; align-items: flex-start; gap: 6px; max-width: 86%; }
+.bubble-wrap { display: flex; align-items: flex-start; gap: 6px; max-width: 80%; }
 .message.user .bubble-wrap { flex-direction: row-reverse; }
 .bubble {
   max-width: 100%;
@@ -402,7 +422,7 @@ const modelLabel = (m: AiModel) => {
 .bubble-hidden:hover { border-color: #6366f1; color: #6366f1; }
 .msg-actions {
   display: flex;
-  flex-direction: column;
+  flex-direction: row;
   gap: 4px;
   margin-top: 10px;
   opacity: 0;
@@ -410,13 +430,13 @@ const modelLabel = (m: AiModel) => {
 }
 .bubble-wrap:hover .msg-actions { opacity: 1; }
 .btn-msg-action {
-  width: 22px;
-  height: 22px;
+  min-width: 42px;
+  height: 26px;
   background: none;
-  border: 1px solid transparent;
-  border-radius: 50%;
-  color: #d1d5db;
-  font-size: 0.65rem;
+  border: 1px solid #d1d5db;
+  border-radius: 8px;
+  color: #64748b;
+  font-size: 0.72rem;
   cursor: pointer;
   transition: all 0.15s;
   display: flex;
@@ -424,7 +444,14 @@ const modelLabel = (m: AiModel) => {
   justify-content: center;
 }
 .btn-msg-action:hover { border-color: #9ca3af; color: #6b7280; background: #f3f4f6; }
-.edit-wrap { display: flex; flex-direction: column; gap: 6px; width: 80%; }
+.btn-msg-delete:hover { border-color: #fca5a5; color: #ef4444; background: #fef2f2; }
+.edit-wrap {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  width: 100%;
+  max-width: 80%;
+}
 .message.user .edit-wrap { align-items: flex-end; }
 .edit-input {
   width: 100%;
@@ -434,9 +461,10 @@ const modelLabel = (m: AiModel) => {
   padding: 10px 14px;
   border: 1px solid #6366f1;
   border-radius: 12px;
-  resize: vertical;
+  resize: none;
   outline: none;
   min-height: 80px;
+  overflow: hidden;
 }
 .edit-actions { display: flex; gap: 6px; }
 .btn-save {

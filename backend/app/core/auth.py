@@ -38,12 +38,22 @@ def _verify_token_with_auth_service(token: str) -> tuple[int, dict | None]:
 async def get_current_user(request: Request) -> AuthUser:
     authorization = request.headers.get("authorization", "")
     parts = authorization.split(" ", 1)
-    if len(parts) != 2 or parts[0].lower() != "bearer" or not parts[1].strip():
+    token: str | None = None
+    if len(parts) == 2 and parts[0].lower() == "bearer" and parts[1].strip():
+        token = parts[1].strip()
+
+    # mk2(BFF) 경유 호출은 Authorization 헤더를 사용하고,
+    # mk3 프론트 직접 호출은 pos_session 쿠키를 fallback으로 사용한다.
+    if token is None:
+        cookie_token = request.cookies.get("pos_session")
+        if isinstance(cookie_token, str) and cookie_token.strip():
+            token = cookie_token.strip()
+
+    if token is None:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Authorization Bearer 토큰이 필요합니다",
+            detail="Authorization Bearer 토큰 또는 pos_session 쿠키가 필요합니다",
         )
-    token = parts[1].strip()
 
     try:
         code, payload = await asyncio.to_thread(_verify_token_with_auth_service, token)
