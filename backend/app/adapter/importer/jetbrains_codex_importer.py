@@ -10,6 +10,7 @@
 import base64
 import json
 from dataclasses import dataclass, field
+from datetime import datetime, timezone
 from pathlib import Path
 
 
@@ -18,6 +19,7 @@ class ParsedConversation:
     session_id: str               # 파일명(UUID) — source_id로 저장해 중복 임포트 방지
     title: str
     messages: list[dict] = field(default_factory=list)  # [{"role": "user"|"assistant", "content": str}]
+    created_at: datetime | None = None  # .events 파일 수정 시간 — 이벤트에 타임스탬프가 없어 근사치로 사용
 
 
 def parse_events_file(path: Path) -> ParsedConversation | None:
@@ -40,7 +42,11 @@ def parse_events_file(path: Path) -> ParsedConversation | None:
     if not events:
         return None
 
-    return _reconstruct_conversation(path.stem, events)
+    result = _reconstruct_conversation(path.stem, events)
+    if result:
+        # 이벤트에 타임스탬프 필드가 없으므로 파일 수정 시간을 근사치로 사용
+        result.created_at = datetime.fromtimestamp(path.stat().st_mtime, tz=timezone.utc)
+    return result
 
 
 def _reconstruct_conversation(session_id: str, events: list[dict]) -> ParsedConversation | None:

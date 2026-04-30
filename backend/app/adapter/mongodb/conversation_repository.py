@@ -85,14 +85,15 @@ class ConversationRepository:
         return self._to_conversation(doc) if doc else None
 
     async def create_conversation(
-        self, provider: str, model: str, title: str, owner_id: str, source_id: str | None = None
+        self, provider: str, model: str, title: str, owner_id: str,
+        source_id: str | None = None, created_at: datetime | None = None,
     ) -> Conversation:
         now = datetime.now(timezone.utc)
         result = await self.conversations.insert_one({
             "provider": provider,
             "model": model,
             "title": title,
-            "created_at": now,
+            "created_at": created_at or now,  # 임포트 시 원본 날짜, 없으면 현재 시간
             "updated_at": now,
             "message_count": 0,
             "total_tokens_input": 0,

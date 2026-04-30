@@ -31,6 +31,7 @@ class ImportService:
                 title=session.title,
                 owner_id=owner_id,
                 source_id=session.session_id,
+                created_at=session.created_at,
             )
 
             for msg in session.messages:
@@ -63,6 +64,7 @@ class ImportService:
                 title=session.title,
                 owner_id=owner_id,
                 source_id=session.session_id,
+                created_at=session.messages[0]["created_at"] if session.messages else None,
             )
 
             for msg in session.messages:
@@ -96,6 +98,7 @@ class ImportService:
                 title=session.title,
                 owner_id=owner_id,
                 source_id=session.session_id,
+                created_at=session.messages[0]["created_at"] if session.messages else None,
             )
 
             for msg in session.messages:
@@ -129,6 +132,7 @@ class ImportService:
                 title=session.title,
                 owner_id=owner_id,
                 source_id=session.session_id,
+                created_at=session.messages[0]["created_at"] if session.messages else None,
             )
 
             for msg in session.messages:
