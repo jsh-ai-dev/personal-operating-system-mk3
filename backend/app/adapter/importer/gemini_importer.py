@@ -4,8 +4,10 @@
 import json
 import re
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
+
+KST = timezone(timedelta(hours=9))  # 날짜 그룹핑 기준 타임존 — Gemini Takeout은 UTC 저장이지만 제목/그룹은 사용자 로컬(KST) 기준이 자연스러움
 
 
 @dataclass
@@ -41,7 +43,7 @@ def parse_takeout(path: Path) -> list[ParsedConversation]:
         except ValueError:
             continue
 
-        date_key = dt.strftime("%Y-%m-%d")
+        date_key = dt.astimezone(KST).strftime("%Y-%m-%d")  # KST 기준 날짜로 그룹핑
         groups.setdefault(date_key, []).append((dt, item))
 
     result = []
