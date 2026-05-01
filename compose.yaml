@@ -2,6 +2,28 @@
 # MongoDB(문서 DB)와 Qdrant(벡터 DB)를 실행하며, .env 파일로 환경변수를 주입할 수 있음
 
 services:
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile.api
+    image: personal-operating-system-mk3-app:latest
+    container_name: personal-operating-system-mk3-app
+    env_file:
+      - backend/.env
+    environment:
+      MONGODB_URL: mongodb://${MK3_MONGO_USERNAME:-pos}:${MK3_MONGO_PASSWORD:-pos}@mongodb:27017
+      MONGODB_DB: ${MK3_MONGO_DB:-pos_mk3}
+      QDRANT_HOST: qdrant
+      QDRANT_PORT: 6333
+    ports:
+      - "8001:8001"
+    depends_on:
+      mongodb:
+        condition: service_healthy
+      qdrant:
+        condition: service_healthy
+    restart: unless-stopped
+
   mongodb:
     image: mongo:7
     container_name: personal-operating-system-mk3-mongodb

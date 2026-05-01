@@ -8,3 +8,4 @@ playwright
 pytest==8.3.5
 openai>=1.0.0
 google-genai>=1.0.0
+anthropic
