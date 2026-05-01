@@ -196,6 +196,7 @@ cython_debug/
 #  refer to https://docs.cursor.com/context/ignore-files
 .cursorignore
 .cursorindexingignore
+.claude/
 
 # Marimo
 marimo/_static/
@@ -232,3 +233,7 @@ backend/debug/
 
 # 개인 대화 내보내기 데이터
 backend/data/
+
+# Kubernetes local secrets
+k8s/base/secret.yaml
+k8s/overlays/aws/secret.aws.yaml

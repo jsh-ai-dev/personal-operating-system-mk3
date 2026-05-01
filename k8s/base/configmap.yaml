@@ -1,0 +1,10 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: mk3-config
+data:
+  MONGODB_DB: "pos_mk3"
+  QDRANT_HOST: "mk3-qdrant"
+  QDRANT_PORT: "6333"
+  CORS_ORIGINS: "[\"http://mk3.local\",\"http://mk2.local\"]"
+  AUTH_SERVICE_URL: "http://mk2-auth.pos-mk2.svc.cluster.local:3002"

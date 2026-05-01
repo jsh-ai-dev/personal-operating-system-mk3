@@ -1,0 +1,102 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: mk3-app
+spec:
+  selector:
+    app: mk3-app
+  ports:
+    - name: http
+      port: 8001
+      targetPort: 8001
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mk3-app
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: mk3-app
+  template:
+    metadata:
+      labels:
+        app: mk3-app
+    spec:
+      containers:
+        - name: app
+          image: personal-operating-system-mk3-app:latest
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 8001
+          env:
+            - name: MONGODB_URL
+              valueFrom:
+                secretKeyRef:
+                  name: mk3-secret
+                  key: MONGODB_URL
+            - name: MONGODB_DB
+              valueFrom:
+                configMapKeyRef:
+                  name: mk3-config
+                  key: MONGODB_DB
+            - name: QDRANT_HOST
+              valueFrom:
+                configMapKeyRef:
+                  name: mk3-config
+                  key: QDRANT_HOST
+            - name: QDRANT_PORT
+              valueFrom:
+                configMapKeyRef:
+                  name: mk3-config
+                  key: QDRANT_PORT
+            - name: QDRANT_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: mk3-secret
+                  key: QDRANT_API_KEY
+            - name: CORS_ORIGINS
+              valueFrom:
+                configMapKeyRef:
+                  name: mk3-config
+                  key: CORS_ORIGINS
+            - name: AUTH_SERVICE_URL
+              valueFrom:
+                configMapKeyRef:
+                  name: mk3-config
+                  key: AUTH_SERVICE_URL
+            - name: OPENAI_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: mk3-secret
+                  key: OPENAI_API_KEY
+            - name: GEMINI_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: mk3-secret
+                  key: GEMINI_API_KEY
+            - name: ANTHROPIC_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: mk3-secret
+                  key: ANTHROPIC_API_KEY
+          resources:
+            requests:
+              cpu: "100m"
+              memory: "256Mi"
+            limits:
+              cpu: "500m"
+              memory: "512Mi"
+          readinessProbe:
+            httpGet:
+              path: /api/v1/health
+              port: 8001
+            initialDelaySeconds: 20
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /api/v1/health
+              port: 8001
+            initialDelaySeconds: 40
+            periodSeconds: 20

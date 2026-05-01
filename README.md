@@ -109,3 +109,12 @@ cp .env.example .env
 - [ ] 벡터 임베딩 및 Qdrant 인덱싱
 - [ ] RAG 기반 자연어 검색 API
 - [ ] mk1 / mk2 데이터 연동
+
+## Kubernetes 배포
+
+`mk3`도 `mk1`, `mk2`와 같은 방식으로 Kubernetes 배포 파일을 포함합니다.
+
+- 기본 배포: `k8s/base` (MongoDB + Qdrant + mk3 API)
+- AWS 오버레이: `k8s/overlays/aws` (외부 MongoDB/Qdrant + mk3 API)
+
+자세한 적용 순서는 `k8s/README.md`를 참고하세요.

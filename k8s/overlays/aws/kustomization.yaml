@@ -1,0 +1,20 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+namespace: pos-mk3
+
+resources:
+  - ../../base/namespace.yaml
+  - ../../base/configmap.yaml
+  - ../../base/api.yaml
+  - ../../base/ingress.yaml
+  - secret.aws.yaml
+
+patches:
+  - path: configmap.aws.patch.yaml
+  - path: ingress.aws.patch.yaml
+
+images:
+  - name: personal-operating-system-mk3-app
+    newName: REPLACE_WITH_ECR_URI/personal-operating-system-mk3-app
+    newTag: latest

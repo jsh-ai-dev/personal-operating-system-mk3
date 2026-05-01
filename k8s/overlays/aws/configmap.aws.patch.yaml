@@ -1,0 +1,9 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: mk3-config
+data:
+  QDRANT_HOST: "REPLACE_QDRANT_ENDPOINT"
+  QDRANT_PORT: "6333"
+  CORS_ORIGINS: "[\"https://mk2.REPLACE_DOMAIN\"]"
+  AUTH_SERVICE_URL: "http://mk2-auth.pos-mk2.svc.cluster.local:3002"

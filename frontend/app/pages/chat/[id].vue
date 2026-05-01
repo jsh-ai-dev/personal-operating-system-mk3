@@ -88,11 +88,14 @@ const models = await getAllModels()
 const priorModel = messages.value.find(m => m.role === 'assistant')?.model ?? ''
 const selectedModelId = ref(models.find(m => m.id === priorModel)?.id ?? models[0]?.id ?? '')
 const selectedModel = computed<AiModel | undefined>(() => models.find(m => m.id === selectedModelId.value))
-// 어시스턴트 메시지가 있는데 model이 null이면 JetBrains 임포트 대화 → read-only
+const IMPORT_MODELS = new Set(['codex', 'claude-code', 'claude', 'gemini'])
+// 임포트 대화는 읽기 전용으로 고정
 const isReadOnly = ref(
   !isNew &&
-  messages.value.some(m => m.role === 'assistant') &&
-  priorModel === ''
+  (
+    IMPORT_MODELS.has(conversationData.value?.model ?? '') ||
+    priorModel === ''
+  )
 )
 
 // 읽기 전용 대화의 소스 레이블 — model 값으로 판별 (임포트 시 고정값 사용)
