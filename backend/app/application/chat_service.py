@@ -120,9 +120,11 @@ def _calc_cost(pricing_table: dict, model: str, tokens_input: int, tokens_output
 
 
 class ChatService:
-    def __init__(self, repo: ConversationRepository, openai_client: AsyncOpenAI):
+    def __init__(self, repo: ConversationRepository, openai_client: AsyncOpenAI, search_svc=None):
         self.repo = repo
         self.openai = openai_client
+        # 요약 생성 후 재임베딩에 사용 — OpenAI 키 없는 환경에서도 채팅은 동작해야 하므로 선택적
+        self.search_svc = search_svc
 
     async def list_conversations(self, owner_id: str, include_hidden: bool = False) -> list[Conversation]:
         return await self.repo.find_all_conversations(owner_id=owner_id, include_hidden=include_hidden)
@@ -184,6 +186,13 @@ class ChatService:
         cost_usd = _calc_cost(OPENAI_PRICING, model, tokens_input, tokens_output)
 
         await self.repo.update_summary(conversation_id, owner_id, summary_text, model, cost_usd)
+
+        # 요약 텍스트가 생겼으므로 기존 벡터를 요약 기반으로 교체
+        if self.search_svc:
+            try:
+                await self.search_svc.embed_conversation(conversation_id, owner_id)
+            except Exception:
+                pass  # 재임베딩 실패가 요약 API 응답을 막으면 안 됨
 
         return {
             "summary": summary_text,

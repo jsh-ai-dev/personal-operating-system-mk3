@@ -116,6 +116,15 @@ class ConversationRepository:
         doc = await self.conversations.find_one({"source_id": source_id, "owner_id": owner_id})
         return self._to_conversation(doc) if doc else None
 
+    async def update_qdrant_id(self, id: str, owner_id: str, qdrant_id: str) -> None:
+        try:
+            await self.conversations.update_one(
+                {"_id": ObjectId(id), "owner_id": owner_id},
+                {"$set": {"qdrant_id": qdrant_id}},
+            )
+        except InvalidId:
+            pass
+
     async def update_summary(self, id: str, owner_id: str, summary: str, model: str, cost_usd: float) -> None:
         try:
             await self.conversations.update_one(

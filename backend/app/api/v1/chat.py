@@ -8,19 +8,28 @@ from fastapi.responses import StreamingResponse
 from motor.motor_asyncio import AsyncIOMotorDatabase
 from openai import AsyncOpenAI
 from pydantic import BaseModel
+from qdrant_client import AsyncQdrantClient
 
 from app.adapter.mongodb.conversation_repository import ConversationRepository
+from app.adapter.qdrant.vector_repository import VectorRepository
 from app.application.chat_service import CLAUDE_PRICING, GEMINI_LIMITS, GEMINI_PRICING, OPENAI_PRICING, ChatService
+from app.application.search_service import SearchService
 from app.core.auth import AuthUser, get_current_user
 from app.core.config import settings
-from app.core.dependencies import get_db
+from app.core.dependencies import get_db, get_qdrant
 
 router = APIRouter(prefix="/chat", tags=["chat"])
 
 
-def _get_svc(db: AsyncIOMotorDatabase = Depends(get_db)) -> ChatService:
+def _get_svc(
+    db: AsyncIOMotorDatabase = Depends(get_db),
+    qdrant: AsyncQdrantClient = Depends(get_qdrant),
+) -> ChatService:
     client = AsyncOpenAI(api_key=settings.openai_api_key)
-    return ChatService(ConversationRepository(db), client)
+    search_svc = None
+    if settings.openai_api_key:
+        search_svc = SearchService(ConversationRepository(db), VectorRepository(qdrant), client)
+    return ChatService(ConversationRepository(db), client, search_svc)
 
 
 class OpenAIChatRequest(BaseModel):

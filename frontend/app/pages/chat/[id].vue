@@ -2,6 +2,9 @@
 <!-- 첫 응답 수신 후 URL을 /chat/new → /chat/{실제ID}로 교체해 새로고침 시 대화가 유지됨 -->
 
 <script setup lang="ts">
+// SSR 비활성화 — 상단 await들이 서버에서 실행되면 pos_session 쿠키가 없어 401 발생
+// 새 탭으로 직접 열 때도 클라이언트에서만 데이터 로드하도록 강제
+definePageMeta({ ssr: false })
 import type { AiModel, Conversation, Message } from '~/composables/useChat'
 
 const route = useRoute()
@@ -65,14 +68,20 @@ const handleEditKeydown = (e: KeyboardEvent, msg: Message) => {
 const isNew = route.params.id === 'new'
 const currentConvId = ref<string | null>(isNew ? null : route.params.id as string)
 
-// 기존 대화면 대화 메타데이터 + 메시지 병렬 로드
 const conversationData = ref<Conversation | null>(null)
 const messages = ref<Message[]>([])
-if (!isNew && currentConvId.value) {
-  ;[conversationData.value, messages.value] = await Promise.all([
-    getConversation(currentConvId.value),
-    getMessages(currentConvId.value),
-  ])
+let models: AiModel[] = []
+
+// import.meta.client: SSR 서버에서는 pos_session 쿠키가 없어 401이 나므로 클라이언트에서만 실행
+// definePageMeta({ ssr: false })의 보조 안전장치 — 둘 다 있어야 확실히 막힘
+if (import.meta.client) {
+  if (!isNew && currentConvId.value) {
+    ;[conversationData.value, messages.value] = await Promise.all([
+      getConversation(currentConvId.value),
+      getMessages(currentConvId.value),
+    ])
+  }
+  models = await getAllModels()
 }
 
 // 요약 상태 — 기존 요약이 있으면 초기값으로 세팅
@@ -83,8 +92,6 @@ const summaryOpen = ref(false)
 const summarizing = ref(false)
 const summaryError = ref('')
 
-const models = await getAllModels()
-// 기존 대화면 어시스턴트 메시지에서 모델 추론, 없으면 목록 첫 번째
 const priorModel = messages.value.find(m => m.role === 'assistant')?.model ?? ''
 const selectedModelId = ref(models.find(m => m.id === priorModel)?.id ?? models[0]?.id ?? '')
 const selectedModel = computed<AiModel | undefined>(() => models.find(m => m.id === selectedModelId.value))
