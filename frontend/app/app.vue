@@ -11,6 +11,7 @@
       <NuxtLink to="/chat" class="nav-link">AI Chat</NuxtLink>
       <NuxtLink to="/summaries" class="nav-link">학습 요약</NuxtLink>
       <NuxtLink to="/search" class="nav-link">의미 검색</NuxtLink>
+      <NuxtLink to="/news" class="nav-link">신문 스크랩</NuxtLink>
     </nav>
 
     <div class="content">
