@@ -14,6 +14,8 @@ export default defineNuxtConfig({
   // public 하위 값은 서버/클라이언트(브라우저) 양쪽 모두 접근 가능
   // public 외부 값은 서버 사이드에서만 접근 가능 (시크릿 보호용)
   runtimeConfig: {
+    // SSR(서버)에서 사용할 API 주소 (compose web 컨테이너에서는 http://api:8001)
+    apiBaseServer: 'http://localhost:8001',
     public: {
       apiBase: 'http://localhost:8001',  // 백엔드 API 기본 주소
     },

@@ -130,6 +130,7 @@ export const useChat = () => {
   ) => {
     const response = await fetch(`${config.public.apiBase}${endpoint}`, {
       method: 'POST',
+      credentials: 'include',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         conversation_id: params.conversationId,

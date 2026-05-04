@@ -39,15 +39,18 @@ OpenAI(ChatGPT), Google Gemini, Anthropic Claude에 직접 API를 호출하고, 
 브라우저
   │
   ▼
-mk2 · Next.js (BFF, :3000)
+mk2 · Next.js (BFF, :3000, 메인 프론트)
   ├─ /api/auth/*    ──▶  auth-service (:3002)   JWT 발급·검증·로그아웃
   ├─ /api/backend/* ──▶  NestJS (:3001)          달력·목표 API
   ├─ /api/notes/*   ──▶  mk1 Spring (:8080)      노트·파일·검색 API
-  └─ /api/mk3/*     ──▶  mk3 FastAPI (:8001)     AI 채팅·임포트 API  ◀ 이 프로젝트
+  └─ /api/mk3/*     ──▶  mk3-api FastAPI (:8001) AI 채팅·임포트 API  ◀ 이 프로젝트
                              │
                       ┌──────┴──────┐
                       MongoDB       Qdrant
 ```
+
+mk3에는 Nuxt 기반 `mk3-web`도 있지만, 실사용 메인 프론트는 mk2(React)입니다.  
+`mk3-web`은 Vue/Nuxt 학습 및 기능 실험용 보조 UI로 유지합니다.
 
 ### mk3 내부 구조 (Clean Architecture)
 
@@ -260,8 +263,9 @@ personal-operating-system-mk3/
 │  ├─ base/                  Kubernetes 기본 배포
 │  └─ overlays/aws/          AWS 환경 오버레이 (외부 DB 연결)
 │
-├─ compose.yaml              FastAPI + MongoDB + Qdrant
-└─ Dockerfile.api            멀티 스테이지 빌드
+├─ compose.yaml              mk3-api + mk3-web + MongoDB + Qdrant
+├─ Dockerfile.api            FastAPI 이미지 빌드
+└─ Dockerfile.web            Nuxt 웹 이미지 빌드
 ```
 
 ---
@@ -274,11 +278,14 @@ personal-operating-system-mk3/
 - Python 3.11+
 - Node.js 20+
 
-### 인프라 실행 (MongoDB + Qdrant)
+### Docker로 전체 실행 (api + web + DB)
 
 ```bash
 docker compose up -d
 ```
+
+- mk3-api(FastAPI): `http://localhost:8001`
+- mk3-web(Nuxt): `http://localhost:3003`
 
 ### 백엔드 실행
 
@@ -315,8 +322,8 @@ npm run dev
 
 | 서비스 | 포트 |
 |---|---|
-| FastAPI | 8001 |
-| Nuxt 3 | 3003 |
+| mk3-api (FastAPI) | 8001 |
+| mk3-web (Nuxt 3) | 3003 |
 | MongoDB | 27017 |
 | Qdrant HTTP | 6333 |
 | Qdrant gRPC | 6334 |

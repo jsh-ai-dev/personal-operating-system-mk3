@@ -1,13 +1,13 @@
-# [인프라 구성] 애플리케이션에 필요한 컨테이너를 정의하는 Docker Compose 파일
-# MongoDB(문서 DB)와 Qdrant(벡터 DB)를 실행하며, .env 파일로 환경변수를 주입할 수 있음
+# [인프라 구성] mk3-api + mk3-web + MongoDB + Qdrant 컨테이너를 정의하는 Docker Compose 파일
+# 메인 프론트는 mk2를 유지하고, mk3-web은 Vue/Nuxt 학습용 보조 UI로 분리 운영
 
 services:
-  app:
+  api:
     build:
       context: .
       dockerfile: Dockerfile.api
-    image: personal-operating-system-mk3-app:latest
-    container_name: personal-operating-system-mk3-app
+    image: personal-operating-system-mk3-api:latest
+    container_name: personal-operating-system-mk3-api
     env_file:
       - backend/.env
     environment:
@@ -15,6 +15,8 @@ services:
       MONGODB_DB: ${MK3_MONGO_DB:-pos_mk3}
       QDRANT_HOST: qdrant
       QDRANT_PORT: 6333
+      # 컨테이너 내부에서 mk2 auth-service(호스트:3002)로 접근
+      AUTH_SERVICE_URL: http://host.docker.internal:3002
     ports:
       - "8001:8001"
     depends_on:
@@ -22,6 +24,23 @@ services:
         condition: service_healthy
       qdrant:
         condition: service_healthy
+    restart: unless-stopped
+
+  web:
+    build:
+      context: .
+      dockerfile: Dockerfile.web
+    image: personal-operating-system-mk3-web:latest
+    container_name: personal-operating-system-mk3-web
+    environment:
+      # 브라우저에서는 localhost 기준으로 호출, SSR(web 컨테이너)에서는 내부 네트워크 주소로 호출
+      NUXT_PUBLIC_API_BASE: http://localhost:8001
+      NUXT_API_BASE_SERVER: http://api:8001
+    ports:
+      - "3003:3000"
+    depends_on:
+      api:
+        condition: service_started
     restart: unless-stopped
 
   mongodb:
