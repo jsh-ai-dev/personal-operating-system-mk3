@@ -22,6 +22,8 @@ class ArticleRepository:
                 motivation_summary=a.get("motivation_summary", ""),
                 questions=a.get("questions", []),
                 analyzed_at=a.get("analyzed_at", ""),
+                analysis_model=a.get("analysis_model", ""),
+                analysis_cost_usd=a.get("analysis_cost_usd", 0.0),
             )
         return Article(
             id=str(doc["_id"]),
@@ -35,6 +37,29 @@ class ArticleRepository:
             scraped_at=doc.get("scraped_at", ""),
             analysis=analysis,
         )
+
+    async def find_by_filter(
+        self, owner_id: str, company: str | None = None, tag: str | None = None
+    ) -> list[Article]:
+        """기업명·태그로 전체 기간 검색. date 무관, 최신순 정렬."""
+        query: dict = {"owner_id": owner_id}
+        if company:
+            query["companies"] = company
+        if tag:
+            query["tags"] = tag
+        docs = await self.col.find(query).sort(
+            [("date", -1), ("page_num", 1)]
+        ).to_list(None)
+        return [self._to_domain(doc) for doc in docs]
+
+    async def find_filter_options(self, owner_id: str) -> dict:
+        """전체 기간에 걸쳐 중복 제거된 기업명·태그 목록 반환."""
+        companies = await self.col.distinct("companies", {"owner_id": owner_id})
+        tags = await self.col.distinct("tags", {"owner_id": owner_id})
+        return {
+            "companies": sorted(c for c in companies if c),
+            "tags": sorted(t for t in tags if t),
+        }
 
     async def find_by_date(self, date: str, owner_id: str) -> list[Article]:
         docs = await self.col.find(

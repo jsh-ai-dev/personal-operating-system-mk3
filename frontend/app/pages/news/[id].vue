@@ -4,22 +4,31 @@
 <script setup lang="ts">
 import type { Article } from '~/composables/useNews'
 
+import type { NewsModel } from '~/composables/useNews'
+
 const route = useRoute()
-const { get, analyze } = useNews()
+const { get, getModels, analyze } = useNews()
 
 const id = route.params.id as string
 
-const { data: article, refresh } = await useAsyncData(`news-${id}`, () => get(id))
+const { data: article } = await useAsyncData(`news-${id}`, () => get(id))
 
+const models = ref<NewsModel[]>([])
+const selectedModel = ref('gpt-5-mini')
 const analyzing = ref(false)
 const error = ref('')
+
+onMounted(async () => {
+  try {
+    models.value = await getModels()
+  } catch (_) {}
+})
 
 const onAnalyze = async () => {
   analyzing.value = true
   error.value = ''
   try {
-    const updated = await analyze(id)
-    // useAsyncData 캐시 갱신
+    const updated = await analyze(id, selectedModel.value)
     article.value = updated
   } catch (e: any) {
     error.value = e.data?.detail ?? '분석 중 오류가 발생했습니다.'
@@ -30,12 +39,20 @@ const onAnalyze = async () => {
 
 const formatDate = (iso: string) =>
   new Date(iso).toLocaleDateString('ko-KR', { year: 'numeric', month: 'long', day: 'numeric' })
+
+const formatCost = (cost: number) => {
+  if (cost === 0) return '$0'
+  if (cost < 0.0001) return '<$0.0001'
+  return `$${cost.toFixed(4)}`
+}
+
+const modelLabel = (m: NewsModel) => `${m.id} ($${m.input_per_1m}/$${m.output_per_1m})`
 </script>
 
 <template>
   <main v-if="article">
     <nav class="breadcrumb">
-      <NuxtLink to="/news">← 목록</NuxtLink>
+      <NuxtLink :to="route.query.date ? `/news?date=${route.query.date}` : '/news'">← 목록</NuxtLink>
       <span>{{ article.page_num }}면</span>
     </nav>
 
@@ -62,22 +79,30 @@ const formatDate = (iso: string) =>
     <section class="analysis-section">
       <div class="analysis-header">
         <h2>AI 분석</h2>
-        <button
-          v-if="!article.analysis"
-          class="btn-analyze"
-          :disabled="analyzing"
-          @click="onAnalyze"
-        >
-          {{ analyzing ? '분석 중…' : '분석하기' }}
-        </button>
-        <button
-          v-else
-          class="btn-reanalyze"
-          :disabled="analyzing"
-          @click="onAnalyze"
-        >
-          {{ analyzing ? '분석 중…' : '재분석' }}
-        </button>
+        <div class="analysis-controls">
+          <select v-model="selectedModel" class="model-select" :disabled="analyzing">
+            <option v-for="m in models" :key="m.id" :value="m.id">{{ modelLabel(m) }}</option>
+          </select>
+          <button
+            v-if="!article.analysis"
+            class="btn-analyze"
+            :disabled="analyzing"
+            @click="onAnalyze"
+          >
+            {{ analyzing ? '분석 중…' : '분석하기' }}
+          </button>
+          <button
+            v-else
+            class="btn-reanalyze"
+            :disabled="analyzing"
+            @click="onAnalyze"
+          >
+            {{ analyzing ? '분석 중…' : '재분석' }}
+          </button>
+        </div>
+        <span v-if="article.analysis?.analysis_model" class="analysis-cost-info">
+          {{ article.analysis.analysis_model }} · {{ formatCost(article.analysis.analysis_cost_usd) }}
+        </span>
       </div>
 
       <p v-if="error" class="error">{{ error }}</p>
@@ -124,7 +149,10 @@ const formatDate = (iso: string) =>
         <div class="analysis-block">
           <h3>현직자 질문</h3>
           <ol class="question-list">
-            <li v-for="q in article.analysis.questions" :key="q">{{ q }}</li>
+            <li v-for="(q, i) in article.analysis.questions" :key="i">
+              <p class="q-text">{{ q.question }}</p>
+              <p class="q-answer">{{ q.expected_answer }}</p>
+            </li>
           </ol>
         </div>
 
@@ -219,9 +247,28 @@ main {
   display: flex;
   align-items: center;
   justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 8px;
   margin-bottom: 16px;
 }
 .analysis-header h2 { font-size: 1.05rem; margin: 0; }
+.analysis-controls { display: flex; align-items: center; gap: 8px; }
+.model-select {
+  font-family: monospace;
+  font-size: 0.78rem;
+  border: 1px solid #d1d5db;
+  border-radius: 6px;
+  padding: 5px 8px;
+  color: #374151;
+  background: #fff;
+  cursor: pointer;
+}
+.model-select:disabled { opacity: 0.5; cursor: not-allowed; }
+.analysis-cost-info {
+  font-size: 0.75rem;
+  color: #9ca3af;
+  white-space: nowrap;
+}
 .btn-analyze, .btn-reanalyze {
   font-family: monospace;
   font-size: 0.82rem;
@@ -305,5 +352,7 @@ main {
   gap: 8px;
 }
 .question-list li { font-size: 0.85rem; line-height: 1.7; color: #1f2937; }
+.q-text { margin: 0 0 4px; font-weight: 600; }
+.q-answer { margin: 0; color: #6b7280; font-style: italic; }
 .analyzed-at { font-size: 0.75rem; color: #9ca3af; margin: 0; }
 </style>

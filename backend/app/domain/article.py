@@ -12,9 +12,11 @@ class ArticleAnalysis:
     keywords: list
     # 지원 동기에 활용할 기업 제품/기술/사업 특징 요약
     motivation_summary: str
-    # 현직자에게 물어볼 질문 2개
+    # 현직자에게 물어볼 질문 2개 [{question, expected_answer}]
     questions: list
     analyzed_at: str
+    analysis_model: str = ""
+    analysis_cost_usd: float = 0.0
 
 
 @dataclass

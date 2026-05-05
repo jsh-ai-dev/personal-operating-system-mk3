@@ -1,6 +1,6 @@
 # [서비스] 뉴스 스크래핑, 기업명·태그 자동 추출, 기사 AI 분석을 담당하는 비즈니스 로직
 # 스크랩 시: API 호출 없음 (텍스트 수집만)
-# 분석 버튼 클릭 시: gpt-5-mini로 메타·키워드·요약·질문 추출, 하이라이팅은 로컬 처리
+# 분석 버튼 클릭 시: 선택한 GPT 모델로 메타·키워드·요약·질문 추출, 하이라이팅은 로컬 처리
 
 import json
 import re
@@ -10,10 +10,11 @@ from openai import OpenAI
 
 from app.adapter.mongodb.article_repository import ArticleRepository
 from app.adapter.scraper import naver_news_scraper
+from app.application.chat_service import OPENAI_PRICING
 from app.core.config import settings
 from app.domain.article import Article
 
-_MODEL = "gpt-5-mini"
+DEFAULT_MODEL = "gpt-5-mini"
 
 # 전자신문 oid (기본값)
 _DEFAULT_OID = "030"
@@ -30,9 +31,10 @@ def _now_iso() -> str:
     return datetime.now(timezone.utc).isoformat()
 
 
-def _chat(prompt: str, max_tokens: int) -> str:
+def _chat(prompt: str, max_tokens: int, model: str) -> tuple[str, int, int]:
+    """(content, tokens_input, tokens_output) 반환"""
     resp = _client().chat.completions.create(
-        model=_MODEL,
+        model=model,
         max_completion_tokens=max_tokens,
         messages=[{"role": "user", "content": prompt}],
     )
@@ -40,12 +42,12 @@ def _chat(prompt: str, max_tokens: int) -> str:
     content = choice.message.content or ""
     if choice.finish_reason == "length":
         raise RuntimeError(
-            f"gpt-5-mini 응답이 토큰 한도({max_tokens})에서 잘렸습니다. "
+            f"{model} 응답이 토큰 한도({max_tokens})에서 잘렸습니다. "
             f"응답 길이: {len(content)}자"
         )
-    content = content.strip()
-    content = content.removeprefix("```json").removeprefix("```").removesuffix("```").strip()
-    return content
+    content = content.strip().removeprefix("```json").removeprefix("```").removesuffix("```").strip()
+    usage = resp.usage
+    return content, (usage.prompt_tokens if usage else 0), (usage.completion_tokens if usage else 0)
 
 
 def _build_highlighted_html(content: str, keywords: list[str]) -> str:
@@ -78,29 +80,37 @@ def _build_highlighted_html(content: str, keywords: list[str]) -> str:
     return "<br>".join(html_lines)
 
 
-def _analyze(title: str, content: str) -> dict:
+def _analyze(title: str, content: str, model: str) -> dict:
     """
-    gpt-5-mini로 companies, tags, keywords, motivation_summary, questions를 추출한다.
+    선택한 GPT 모델로 companies, tags, keywords, motivation_summary, questions를 추출한다.
     highlighted_html은 응답에서 제외하고 로컬에서 생성해 토큰 비용을 절감한다.
+    분석에 사용한 모델명과 비용(USD)도 함께 반환한다.
     """
-    prompt = f"""다음 기사를 분석해서 JSON만 반환해줘.
+    prompt = f"""다음 기사를 분석해서 JSON만 반환해줘. 면접 준비를 위해 기업을 조사하는 용도야.
 
 제목: {title}
 내용: {content}
 
 {{
-  "companies": ["기사에 언급된 기업명 최대 5개"],
-  "tags": ["핵심 주제 태그 최대 5개 (예: 반도체, AI, 파운드리)"],
+  "companies": ["기사의 주제가 되는 핵심 기업 1~2개만 (언급만 된 기업 제외)"],
+  "tags": ["기사의 핵심 주제 태그 1~3개 (예: 반도체, AI, 파운드리)"],
   "keywords": [{{"keyword": "개발자에게 중요한 기술 키워드", "explanation": "한 줄 설명"}}],
   "motivation_summary": "지원 동기에 활용할 기업 제품·기술·사업 특징 요약 (3~5문장)",
-  "questions": ["기사만으로 알기 어려운 내용을 현직자에게 묻는 질문 2개"]
-}}"""
+  "questions": [{{"question": "기사만으로 알기 어려운 내용을 현직자에게 묻는 질문", "expected_answer": "예상 답변 2~3문장"}}]
+}}
 
-    data = json.loads(_chat(prompt, 3000))
+keywords는 정확히 3개, questions는 정확히 2개 반환해줘."""
 
-    # keywords + companies 를 합쳐 하이라이팅 키워드로 활용
+    raw, tokens_in, tokens_out = _chat(prompt, 3000, model)
+    data = json.loads(raw)
+
+    pricing = OPENAI_PRICING.get(model, {"input": 0.0, "output": 0.0})
+    cost_usd = (tokens_in * pricing["input"] + tokens_out * pricing["output"]) / 1_000_000
+
     kw_terms = [k["keyword"] for k in data.get("keywords", [])] + data.get("companies", [])
     data["highlighted_html"] = _build_highlighted_html(content, kw_terms)
+    data["analysis_model"] = model
+    data["analysis_cost_usd"] = cost_usd
 
     return data
 
@@ -144,16 +154,24 @@ class NewsService:
     async def list_by_date(self, date: str, owner_id: str) -> list[Article]:
         return await self.repo.find_by_date(date, owner_id)
 
+    async def list_by_filter(
+        self, owner_id: str, company: str | None, tag: str | None
+    ) -> list[Article]:
+        return await self.repo.find_by_filter(owner_id, company=company, tag=tag)
+
+    async def get_filter_options(self, owner_id: str) -> dict:
+        return await self.repo.find_filter_options(owner_id)
+
     async def get(self, id: str, owner_id: str) -> Article | None:
         return await self.repo.find_by_id(id, owner_id)
 
-    async def analyze(self, id: str, owner_id: str) -> Article | None:
+    async def analyze(self, id: str, owner_id: str, model: str = DEFAULT_MODEL) -> Article | None:
         """버튼 클릭 시 전체 AI 분석을 생성하고 저장한다. companies/tags도 함께 추출한다."""
         article = await self.repo.find_by_id(id, owner_id)
         if not article:
             return None
 
-        data = _analyze(article.title, article.content)
+        data = _analyze(article.title, article.content, model)
 
         companies = data.pop("companies", [])
         tags = data.pop("tags", [])

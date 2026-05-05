@@ -33,6 +33,11 @@ def fetch_article_links(oid: str, date: str) -> list[dict]:
         f"?mode=LPOD&mid=sec&oid={oid}&listType=paper&date={date}"
     )
     soup = _get(url)
+
+    # 미발행 안내 문구가 있으면 신문이 발행되지 않은 날
+    if soup.find(string=lambda t: t and "신문이 발행되지 않았거나" in t):
+        raise ValueError("해당 일에 신문이 발행되지 않았거나 신문게재기사 정보가 없습니다.")
+
     results = []
 
     for h4 in soup.select("h4.paper_h4"):

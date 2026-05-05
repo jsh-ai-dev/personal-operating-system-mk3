@@ -4,40 +4,26 @@
 <script setup lang="ts">
 import type { Article } from '~/composables/useNews'
 
-const { scrape, list } = useNews()
+const { scrape, list, getFilterOptions } = useNews()
+const route = useRoute()
 
 const today = new Date().toISOString().slice(0, 10)
-const selectedDate = ref(today)
+const selectedDate = ref((route.query.date as string) || today)
 const articles = ref<Article[]>([])
+const allCompanies = ref<string[]>([])
+const allTags = ref<string[]>([])
 const loading = ref(false)
 const scraping = ref(false)
 const error = ref('')
 
 const filterCompany = ref('all')
 const filterTag = ref('all')
+const isFiltered = computed(() => filterCompany.value !== 'all' || filterTag.value !== 'all')
 
-// 목록에서 필터용 옵션 동적 생성
-const companies = computed(() => {
-  const set = new Set(articles.value.flatMap(a => a.companies))
-  return ['all', ...set]
-})
-const tags = computed(() => {
-  const set = new Set(articles.value.flatMap(a => a.tags))
-  return ['all', ...set]
-})
-
-const filtered = computed(() => {
-  return articles.value.filter(a => {
-    const matchCompany = filterCompany.value === 'all' || a.companies.includes(filterCompany.value)
-    const matchTag = filterTag.value === 'all' || a.tags.includes(filterTag.value)
-    return matchCompany && matchTag
-  })
-})
-
-// 면별로 그룹핑
+// 날짜 뷰: 면 기준 그룹핑 (필터 미적용 시)
 const grouped = computed(() => {
   const map = new Map<number, Article[]>()
-  for (const a of filtered.value) {
+  for (const a of articles.value) {
     const arr = map.get(a.page_num) ?? []
     arr.push(a)
     map.set(a.page_num, arr)
@@ -45,24 +31,57 @@ const grouped = computed(() => {
   return [...map.entries()].sort((a, b) => a[0] - b[0])
 })
 
-const loadList = async () => {
+// 필터 뷰: 날짜 기준 그룹핑 (최신순, 필터 적용 시)
+const groupedByDate = computed(() => {
+  const map = new Map<string, Article[]>()
+  for (const a of articles.value) {
+    const arr = map.get(a.date) ?? []
+    arr.push(a)
+    map.set(a.date, arr)
+  }
+  return [...map.entries()].sort((a, b) => b[0].localeCompare(a[0]))
+})
+
+const loadArticles = async () => {
   loading.value = true
   error.value = ''
   try {
-    articles.value = await list(selectedDate.value)
+    if (isFiltered.value) {
+      articles.value = await list({
+        company: filterCompany.value !== 'all' ? filterCompany.value : undefined,
+        tag: filterTag.value !== 'all' ? filterTag.value : undefined,
+      })
+    } else {
+      articles.value = await list({ date: selectedDate.value })
+    }
   } catch {
-    // 저장된 기사가 없으면 빈 배열
     articles.value = []
   } finally {
     loading.value = false
   }
 }
 
+const loadFilterOptions = async () => {
+  try {
+    const opts = await getFilterOptions()
+    allCompanies.value = opts.companies
+    allTags.value = opts.tags
+  } catch {}
+}
+
+// 날짜 변경: 필터가 없을 때만 재조회 (필터가 있으면 필터가 우선)
+watch(selectedDate, () => { if (!isFiltered.value) loadArticles() })
+
+// 필터 변경: 항상 재조회
+watch([filterCompany, filterTag], loadArticles)
+
 const onScrape = async () => {
   scraping.value = true
   error.value = ''
   try {
     articles.value = await scrape(selectedDate.value)
+    // 스크랩 후 분석이 완료되면 새 기업/태그가 생길 수 있으므로 옵션 갱신
+    await loadFilterOptions()
   } catch (e: any) {
     error.value = e.data?.detail ?? '스크랩 중 오류가 발생했습니다.'
   } finally {
@@ -70,7 +89,10 @@ const onScrape = async () => {
   }
 }
 
-onMounted(loadList)
+onMounted(() => {
+  loadArticles()
+  loadFilterOptions()
+})
 </script>
 
 <template>
@@ -82,7 +104,6 @@ onMounted(loadList)
           v-model="selectedDate"
           type="date"
           class="date-input"
-          @change="loadList"
         />
         <button class="btn-scrape" :disabled="scraping" @click="onScrape">
           {{ scraping ? '수집 중…' : '스크랩' }}
@@ -90,47 +111,79 @@ onMounted(loadList)
       </div>
     </header>
 
-    <div v-if="articles.length" class="filters">
+    <div class="filters">
       <select v-model="filterCompany" class="filter-select">
         <option value="all">전체 기업</option>
-        <option v-for="c in companies.slice(1)" :key="c" :value="c">{{ c }}</option>
+        <option v-for="c in allCompanies" :key="c" :value="c">{{ c }}</option>
       </select>
       <select v-model="filterTag" class="filter-select">
         <option value="all">전체 태그</option>
-        <option v-for="t in tags.slice(1)" :key="t" :value="t">{{ t }}</option>
+        <option v-for="t in allTags" :key="t" :value="t">{{ t }}</option>
       </select>
-      <span class="count">{{ filtered.length }}건</span>
+      <span class="count">
+        {{ articles.length }}건
+        <span v-show="isFiltered" class="count-scope">· 전체 기간</span>
+      </span>
     </div>
 
     <p v-if="error" class="error">{{ error }}</p>
 
-    <div v-if="loading" class="empty">불러오는 중…</div>
+    <div v-show="loading" class="empty">불러오는 중…</div>
 
-    <div v-else-if="grouped.length === 0 && !scraping" class="empty">
+    <div v-show="!loading && articles.length === 0 && !scraping" class="empty">
       <p>{{ selectedDate }} 날짜의 기사가 없습니다.</p>
       <p>스크랩 버튼을 눌러 수집하세요.</p>
     </div>
 
-    <div v-for="[pageNum, items] in grouped" :key="pageNum" class="section">
-      <h2 class="page-label">{{ pageNum }}면</h2>
-      <div class="article-list">
-        <NuxtLink
-          v-for="a in items"
-          :key="a.id"
-          :to="`/news/${a.id}`"
-          class="article-card"
-        >
-          <div class="article-meta">
-            <span class="page-badge">{{ a.page_num }}면</span>
-            <span class="date-text">{{ a.date }}</span>
-            <span v-if="a.analysis" class="analyzed-badge">분석완료</span>
-          </div>
-          <p class="article-title">{{ a.title }}</p>
-          <div class="article-tags">
-            <span v-for="c in a.companies" :key="c" class="tag company">{{ c }}</span>
-            <span v-for="t in a.tags" :key="t" class="tag topic">{{ t }}</span>
-          </div>
-        </NuxtLink>
+    <!-- 날짜 뷰: 면 기준 그룹핑 -->
+    <div v-show="!isFiltered">
+      <div v-for="[pageNum, items] in grouped" :key="pageNum" class="section">
+        <h2 class="page-label">{{ pageNum }}면</h2>
+        <div class="article-list">
+          <NuxtLink
+            v-for="a in items"
+            :key="a.id"
+            :to="`/news/${a.id}?date=${selectedDate}`"
+            class="article-card"
+          >
+            <div class="article-meta">
+              <span class="page-badge">{{ a.page_num }}면</span>
+              <span class="date-text">{{ a.date }}</span>
+              <span v-if="a.analysis" class="analyzed-badge">분석완료</span>
+            </div>
+            <p class="article-title">{{ a.title }}</p>
+            <div class="article-tags">
+              <span v-for="c in a.companies" :key="c" class="tag company">{{ c }}</span>
+              <span v-for="t in a.tags" :key="t" class="tag topic">{{ t }}</span>
+            </div>
+          </NuxtLink>
+        </div>
+      </div>
+    </div>
+
+    <!-- 필터 뷰: 날짜 기준 그룹핑 (전체 기간) -->
+    <div v-show="isFiltered">
+      <div v-for="[date, items] in groupedByDate" :key="date" class="section">
+        <h2 class="page-label">{{ date }}</h2>
+        <div class="article-list">
+          <NuxtLink
+            v-for="a in items"
+            :key="a.id"
+            :to="`/news/${a.id}?date=${a.date}`"
+            class="article-card"
+          >
+            <div class="article-meta">
+              <span class="page-badge">{{ a.page_num }}면</span>
+              <span class="date-text">{{ a.date }}</span>
+              <span v-if="a.analysis" class="analyzed-badge">분석완료</span>
+            </div>
+            <p class="article-title">{{ a.title }}</p>
+            <div class="article-tags">
+              <span v-for="c in a.companies" :key="c" class="tag company">{{ c }}</span>
+              <span v-for="t in a.tags" :key="t" class="tag topic">{{ t }}</span>
+            </div>
+          </NuxtLink>
+        </div>
       </div>
     </div>
   </main>
@@ -189,6 +242,7 @@ h1 { font-size: 1.3rem; margin: 0; }
   cursor: pointer;
 }
 .count { font-size: 0.8rem; color: #9ca3af; }
+.count-scope { color: #6366f1; }
 .error { color: #ef4444; font-size: 0.85rem; margin-bottom: 12px; }
 .empty {
   text-align: center;
