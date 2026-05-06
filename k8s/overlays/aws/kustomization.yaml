@@ -7,6 +7,7 @@ resources:
   - ../../base/namespace.yaml
   - ../../base/configmap.yaml
   - ../../base/api.yaml
+  - ../../base/web.yaml
   - ../../base/ingress.yaml
   - secret.aws.yaml
 
@@ -17,4 +18,7 @@ patches:
 images:
   - name: personal-operating-system-mk3-app
     newName: REPLACE_WITH_ECR_URI/personal-operating-system-mk3-app
+    newTag: latest
+  - name: personal-operating-system-mk3-web
+    newName: REPLACE_WITH_ECR_URI/personal-operating-system-mk3-web
     newTag: latest

@@ -2,8 +2,8 @@
 
 This setup keeps `mk3` practical for learning and AWS deployment:
 
-- local/base includes MongoDB + Qdrant + mk3 app
-- AWS overlay assumes MongoDB/Qdrant are managed externally and runs only mk3 app on EKS
+- local/base includes MongoDB + Qdrant + mk3 API + mk3 Web
+- AWS overlay assumes MongoDB/Qdrant are managed externally and runs mk3 API/Web on EKS
 
 ## Included
 
@@ -11,7 +11,8 @@ This setup keeps `mk3` practical for learning and AWS deployment:
 - `ConfigMap` + `Secret`
 - `MongoDB` (Deployment + PVC + Service)
 - `Qdrant` (Deployment + PVC + Service)
-- `App` (Deployment + Service)
+- `API` (Deployment + Service)
+- `Web` (Deployment + Service)
 - `Ingress`
 
 ## Apply (base)
@@ -40,7 +41,7 @@ cp k8s/overlays/aws/secret.aws.example.yaml k8s/overlays/aws/secret.aws.yaml
 # edit MongoDB/Qdrant/API key values
 ```
 
-2) In `k8s/overlays/aws/kustomization.yaml`, replace ECR image URI.
+2) In `k8s/overlays/aws/kustomization.yaml`, replace ECR image URIs.
 
 3) Apply:
 
@@ -53,4 +54,5 @@ kubectl -n pos-mk3 get all
 
 ```bash
 docker build -f Dockerfile.api -t personal-operating-system-mk3-app:latest .
+docker build -f Dockerfile.web -t personal-operating-system-mk3-web:latest .
 ```

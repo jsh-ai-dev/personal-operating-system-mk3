@@ -7,10 +7,17 @@ spec:
     - host: mk3.local
       http:
         paths:
+          - path: /api
+            pathType: Prefix
+            backend:
+              service:
+                name: mk3-api
+                port:
+                  number: 8001
           - path: /
             pathType: Prefix
             backend:
               service:
-                name: mk3-app
+                name: mk3-web
                 port:
-                  number: 8001
+                  number: 3000

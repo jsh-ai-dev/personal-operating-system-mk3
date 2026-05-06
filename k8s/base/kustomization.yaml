@@ -10,4 +10,5 @@ resources:
   - mongodb.yaml
   - qdrant.yaml
   - api.yaml
+  - web.yaml
   - ingress.yaml
