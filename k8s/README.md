@@ -63,5 +63,5 @@ Use this from the `mk3` repository on your data-box EC2:
 
 ```bash
 cp .env.data-box.example .env.data-box
-docker compose -f compose.data-box.yaml up -d
+docker compose --env-file .env.data-box -f compose.data-box.yaml up -d
 ```
