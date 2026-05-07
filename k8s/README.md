@@ -53,7 +53,7 @@ kubectl -n pos-mk3 get all
 ## Build image example (ECR)
 
 ```bash
-docker build -f Dockerfile.api -t personal-operating-system-mk3-app:latest .
+docker build -f Dockerfile.api -t personal-operating-system-mk3-api:latest .
 docker build -f Dockerfile.web -t personal-operating-system-mk3-web:latest .
 ```
 

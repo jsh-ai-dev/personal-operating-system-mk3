@@ -16,9 +16,9 @@ patches:
   - path: ingress.aws.patch.yaml
 
 images:
-  - name: personal-operating-system-mk3-app
-    newName: REPLACE_WITH_ECR_URI/personal-operating-system-mk3-app
+  - name: personal-operating-system-mk3-api
+    newName: 948360715051.dkr.ecr.ap-northeast-2.amazonaws.com/personal-operating-system-mk3-api
     newTag: latest
   - name: personal-operating-system-mk3-web
-    newName: REPLACE_WITH_ECR_URI/personal-operating-system-mk3-web
+    newName: 948360715051.dkr.ecr.ap-northeast-2.amazonaws.com/personal-operating-system-mk3-web
     newTag: latest

@@ -26,7 +26,7 @@ spec:
     spec:
       containers:
         - name: api
-          image: personal-operating-system-mk3-app:latest
+          image: personal-operating-system-mk3-api:latest
           imagePullPolicy: IfNotPresent
           ports:
             - containerPort: 8001
