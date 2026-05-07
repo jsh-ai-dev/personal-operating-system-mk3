@@ -3,7 +3,7 @@ kind: ConfigMap
 metadata:
   name: mk3-config
 data:
-  QDRANT_HOST: "REPLACE_QDRANT_ENDPOINT"
+  QDRANT_HOST: "REPLACE_QDRANT_HOST"
   QDRANT_PORT: "6333"
   NUXT_PUBLIC_API_BASE: "https://mk3.REPLACE_DOMAIN/api"
   NUXT_API_BASE_SERVER: "http://mk3-api:8001"

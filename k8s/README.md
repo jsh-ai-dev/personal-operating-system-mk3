@@ -56,3 +56,12 @@ kubectl -n pos-mk3 get all
 docker build -f Dockerfile.api -t personal-operating-system-mk3-app:latest .
 docker build -f Dockerfile.web -t personal-operating-system-mk3-web:latest .
 ```
+
+## MongoDB/Qdrant on data-box (compose)
+
+Use this from the `mk3` repository on your data-box EC2:
+
+```bash
+cp .env.data-box.example .env.data-box
+docker compose -f compose.data-box.yaml up -d
+```
