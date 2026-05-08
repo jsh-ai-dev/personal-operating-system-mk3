@@ -51,11 +51,6 @@ spec:
                 configMapKeyRef:
                   name: mk3-config
                   key: QDRANT_PORT
-            - name: QDRANT_API_KEY
-              valueFrom:
-                secretKeyRef:
-                  name: mk3-secret
-                  key: QDRANT_API_KEY
             - name: CORS_ORIGINS
               valueFrom:
                 configMapKeyRef:

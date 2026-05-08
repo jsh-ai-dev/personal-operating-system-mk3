@@ -4,4 +4,4 @@ metadata:
   name: mk3-ingress
 spec:
   rules:
-    - host: mk3.REPLACE_DOMAIN
+    - host: mk3.local

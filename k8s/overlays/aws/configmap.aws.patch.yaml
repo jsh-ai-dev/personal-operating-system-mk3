@@ -5,7 +5,7 @@ metadata:
 data:
   QDRANT_HOST: "10.20.17.124"
   QDRANT_PORT: "6333"
-  NUXT_PUBLIC_API_BASE: "https://mk3.REPLACE_DOMAIN/api"
+  NUXT_PUBLIC_API_BASE: "http://mk3.local/api"
   NUXT_API_BASE_SERVER: "http://mk3-api:8001"
-  CORS_ORIGINS: "[\"https://mk2.REPLACE_DOMAIN\"]"
+  CORS_ORIGINS: "[\"http://mk2.local\"]"
   AUTH_SERVICE_URL: "http://mk2-auth.pos-mk2.svc.cluster.local:3002"

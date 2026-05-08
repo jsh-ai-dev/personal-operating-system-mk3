@@ -28,8 +28,6 @@ services:
     container_name: personal-operating-system-mk3-qdrant
     env_file:
       - .env.data-box
-    environment:
-      QDRANT__SERVICE__API_KEY: ${MK3_QDRANT_API_KEY:?MK3_QDRANT_API_KEY is required}
     ports:
       - "${MK3_QDRANT_BIND:-0.0.0.0}:${MK3_QDRANT_HTTP_PORT:-6333}:6333"
       - "${MK3_QDRANT_BIND:-0.0.0.0}:${MK3_QDRANT_GRPC_PORT:-6334}:6334"
