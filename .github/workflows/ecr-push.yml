@@ -1,0 +1,59 @@
+# mk3 FastAPI(api) / Nuxt(web) 이미지를 각각 ECR로 빌드·푸시합니다.
+#
+# 사전 준비: 저장소 Secret AWS_ROLE_TO_ASSUME (OIDC IAM 역할 ARN). mk1 워크플로 주석과 동일한 IAM 패턴.
+
+name: Build and push mk3 images to ECR
+
+on:
+  push:
+    branches: [main, master]
+    paths:
+      - ".github/workflows/ecr-push.yml"
+      - "Dockerfile.api"
+      - "Dockerfile.web"
+      - "backend/**"
+      - "frontend/**"
+  workflow_dispatch:
+
+permissions:
+  id-token: write
+  contents: read
+
+env:
+  AWS_REGION: ap-northeast-2
+
+jobs:
+  build-and-push:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - dockerfile: Dockerfile.api
+            image: personal-operating-system-mk3-api
+          - dockerfile: Dockerfile.web
+            image: personal-operating-system-mk3-web
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Configure AWS credentials (OIDC)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE_TO_ASSUME }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Login to Amazon ECR
+        id: login-ecr
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Build and push
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: ${{ matrix.dockerfile }}
+          push: true
+          tags: |
+            ${{ steps.login-ecr.outputs.registry }}/${{ matrix.image }}:latest
+            ${{ steps.login-ecr.outputs.registry }}/${{ matrix.image }}:${{ github.sha }}
