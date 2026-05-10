@@ -54,6 +54,14 @@ async def import_claude_export(
     return await svc.import_claude_export(user.id, settings.claude_export_path)
 
 
+@router.post("/chatgpt-export")
+async def import_chatgpt_export(
+    svc: ImportService = Depends(_get_svc),
+    user: AuthUser = Depends(get_current_user),
+):
+    return await svc.import_chatgpt_export(user.id, settings.chatgpt_export_path)
+
+
 @router.post("/gemini-takeout")
 async def import_gemini_takeout(
     svc: ImportService = Depends(_get_svc),

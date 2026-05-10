@@ -5,6 +5,7 @@
 import logging
 from pathlib import Path
 
+from app.adapter.importer.chatgpt_importer import parse_export as parse_chatgpt_export
 from app.adapter.importer.claude_code_importer import scan_sessions as scan_claude_code_sessions
 from app.adapter.importer.claude_importer import parse_export as parse_claude_export
 from app.adapter.importer.gemini_importer import parse_takeout
@@ -112,6 +113,41 @@ class ImportService:
             conv = await self.repo.create_conversation(
                 provider="anthropic",
                 model="claude",
+                title=session.title,
+                owner_id=owner_id,
+                source_id=session.session_id,
+                created_at=session.messages[0]["created_at"] if session.messages else None,
+            )
+
+            for msg in session.messages:
+                await self.repo.insert_message(
+                    conversation_id=conv.id,
+                    owner_id=owner_id,
+                    role=msg["role"],
+                    content=msg["content"],
+                    created_at=msg["created_at"],
+                )
+
+            await self.repo.set_message_count(conv.id, owner_id, len(session.messages))
+            await self._try_embed(conv.id, owner_id)
+            imported += 1
+
+        return {"imported": imported, "skipped": skipped, "total": len(sessions)}
+
+    async def import_chatgpt_export(self, owner_id: str, export_path: str) -> dict:
+        sessions = parse_chatgpt_export(Path(export_path))
+        imported = 0
+        skipped = 0
+
+        for session in sessions:
+            existing = await self.repo.find_conversation_by_source_id(session.session_id, owner_id)
+            if existing:
+                skipped += 1
+                continue
+
+            conv = await self.repo.create_conversation(
+                provider="openai",
+                model="chatgpt",
                 title=session.title,
                 owner_id=owner_id,
                 source_id=session.session_id,

@@ -40,6 +40,9 @@ class Settings(BaseSettings):
     # Claude Code 로컬 트랜스크립트 디렉토리 (Claude Code 대화 임포트용)
     claude_code_path: str = r"data\claude-code"
 
+    # ChatGPT 데이터 내보내기 경로 (ChatGPT 대화 임포트용)
+    chatgpt_export_path: str = r"data\chatgpt\conversations.json"
+
 
 # 모듈 로드 시 한 번만 생성 — 앱 전체에서 이 인스턴스를 임포트해 공유
 settings = Settings()

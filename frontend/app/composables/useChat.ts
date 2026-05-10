@@ -83,6 +83,9 @@ export const useChat = () => {
   const importClaudeCode = () =>
     api<{ imported: number; skipped: number; total: number }>('/api/v1/import/claude-code', { method: 'POST' })
 
+  const importChatGptExport = () =>
+    api<{ imported: number; skipped: number; total: number }>('/api/v1/import/chatgpt-export', { method: 'POST' })
+
   const setHidden = (id: string, isHidden: boolean) =>
     api(`/api/v1/chat/conversations/${id}`, { method: 'PATCH', body: { is_hidden: isHidden } })
 
@@ -207,5 +210,5 @@ export const useChat = () => {
       { method: 'POST', body: { model } },
     )
 
-  return { listConversations, getConversation, getMessages, getAllModels, chatOpenAI, chatGemini, chatClaude, summarizeConversation, generateQuiz, importJetbrainsCodex, importGeminiTakeout, importClaudeExport, importClaudeCode, setHidden, deleteConversation, setMessageHidden, updateMessageContent, deleteMessage }
+  return { listConversations, getConversation, getMessages, getAllModels, chatOpenAI, chatGemini, chatClaude, summarizeConversation, generateQuiz, importJetbrainsCodex, importGeminiTakeout, importClaudeExport, importClaudeCode, importChatGptExport, setHidden, deleteConversation, setMessageHidden, updateMessageContent, deleteMessage }
 }

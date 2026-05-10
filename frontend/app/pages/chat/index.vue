@@ -1,7 +1,7 @@
 <!-- [페이지] /chat — 전체 대화 목록 페이지. 각 항목 클릭 시 /chat/[id]로 이동 -->
 
 <script setup lang="ts">
-const { listConversations, setHidden, deleteConversation, importJetbrainsCodex, importGeminiTakeout, importClaudeExport, importClaudeCode } = useChat()
+const { listConversations, setHidden, deleteConversation, importJetbrainsCodex, importGeminiTakeout, importClaudeExport, importClaudeCode, importChatGptExport } = useChat()
 
 // refresh는 runImport에서 참조하므로 먼저 선언
 const showHidden = ref(false)
@@ -14,12 +14,13 @@ const importingCodex = ref(false)
 const importingGemini = ref(false)
 const importingClaude = ref(false)
 const importingClaudeCode = ref(false)
+const importingChatGpt = ref(false)
 const importResult = ref('')
 const importModalOpen = ref(false)
-const selectedImportKey = ref<'jetbrains-codex' | 'claude-export' | 'claude-code' | 'gemini-takeout'>('jetbrains-codex')
+const selectedImportKey = ref<'jetbrains-codex' | 'claude-export' | 'claude-code' | 'gemini-takeout' | 'chatgpt-export'>('jetbrains-codex')
 
 const importOptions = [
-  { label: 'ChatGPT', key: 'chatgpt', enabled: false },
+  { label: 'ChatGPT', key: 'chatgpt-export', enabled: true },
   { label: 'Codex', key: 'jetbrains-codex', enabled: true },
   { label: 'Gemini', key: 'gemini-takeout', enabled: true },
   { label: 'Gemini Code Assist', key: 'gemini-code-assist', enabled: false },
@@ -101,12 +102,14 @@ const runImportCodex = () => _runImport(importJetbrainsCodex, v => { importingCo
 const runImportGemini = () => _runImport(importGeminiTakeout, v => { importingGemini.value = v })
 const runImportClaude = () => _runImport(importClaudeExport, v => { importingClaude.value = v })
 const runImportClaudeCode = () => _runImport(importClaudeCode, v => { importingClaudeCode.value = v })
+const runImportChatGpt = () => _runImport(importChatGptExport, v => { importingChatGpt.value = v })
 
 const runImportByKey = async () => {
   if (selectedImportKey.value === 'jetbrains-codex') await runImportCodex()
   if (selectedImportKey.value === 'claude-export') await runImportClaude()
   if (selectedImportKey.value === 'claude-code') await runImportClaudeCode()
   if (selectedImportKey.value === 'gemini-takeout') await runImportGemini()
+  if (selectedImportKey.value === 'chatgpt-export') await runImportChatGpt()
   importModalOpen.value = false
 }
 
@@ -149,6 +152,7 @@ const convSourceLabel = (conv: { provider: string; model: string }): string => {
     'claude-code': 'Claude Code',
     'claude': 'Claude.ai',
     'gemini': 'Gemini',
+    'chatgpt': 'ChatGPT',
   }
   if (labels[conv.model]) return labels[conv.model]
   return ({ openai: 'OpenAI', anthropic: 'Claude', google: 'Gemini' })[conv.provider] ?? conv.provider
@@ -158,7 +162,7 @@ const convSourceLabel = (conv: { provider: string; model: string }): string => {
 const convType = (conv: { model: string }): { label: string; cls: string } => {
   if (conv.model === 'codex' || conv.model === 'claude-code')
     return { label: '코딩', cls: 'type-code' }
-  if (conv.model === 'claude' || conv.model === 'gemini')
+  if (conv.model === 'claude' || conv.model === 'gemini' || conv.model === 'chatgpt')
     return { label: '채팅 임포트', cls: 'type-chat' }
   return { label: 'API', cls: 'type-api' }
 }
@@ -168,6 +172,7 @@ const convFilterKey = (conv: { provider: string; model: string }): FilterKey => 
   if (conv.model === 'claude-code') return 'claude-code'
   if (conv.model === 'claude') return 'claude-export'
   if (conv.model === 'gemini') return 'gemini-takeout'
+  if (conv.model === 'chatgpt') return 'chatgpt'
   if (conv.provider === 'openai') return 'openai'
   if (conv.provider === 'anthropic') return 'anthropic'
   if (conv.provider === 'google') return 'google'
@@ -211,7 +216,7 @@ const filteredConversations = computed(() => {
         <button class="btn-toggle-hidden" :class="{ active: showHidden }" @click="toggleShowHidden">
           {{ showHidden ? '숨김 숨기기' : '숨김 보기' }}
         </button>
-        <button class="btn-import" :disabled="importingCodex || importingGemini || importingClaude || importingClaudeCode" @click="importModalOpen = true">
+        <button class="btn-import" :disabled="importingCodex || importingGemini || importingClaude || importingClaudeCode || importingChatGpt" @click="importModalOpen = true">
           내역 가져오기
         </button>
         <span v-if="importResult" class="import-result">{{ importResult }}</span>
@@ -221,7 +226,7 @@ const filteredConversations = computed(() => {
     <div v-if="importModalOpen" class="modal-overlay">
       <div class="modal">
         <p class="modal-title">가져올 서비스 선택</p>
-        <select v-model="selectedImportKey" class="modal-select" :disabled="importingCodex || importingGemini || importingClaude || importingClaudeCode">
+        <select v-model="selectedImportKey" class="modal-select" :disabled="importingCodex || importingGemini || importingClaude || importingClaudeCode || importingChatGpt">
           <option v-for="opt in importOptions" :key="opt.key" :value="opt.key" :disabled="!opt.enabled">
             {{ opt.label }} {{ opt.enabled ? '' : '(준비 중...)' }}
           </option>
@@ -229,7 +234,7 @@ const filteredConversations = computed(() => {
         <p class="modal-hint">현재 구현된 항목만 선택 가능합니다.</p>
         <div class="modal-actions">
           <button class="btn-import" @click="importModalOpen = false">취소</button>
-          <button class="btn-import" :disabled="importingCodex || importingGemini || importingClaude || importingClaudeCode || !importOptions.find(v => v.key === selectedImportKey)?.enabled" @click="runImportByKey">
+          <button class="btn-import" :disabled="importingCodex || importingGemini || importingClaude || importingClaudeCode || importingChatGpt || !importOptions.find(v => v.key === selectedImportKey)?.enabled" @click="runImportByKey">
             가져오기
           </button>
         </div>
