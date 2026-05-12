@@ -9,15 +9,31 @@ const { list, syncClaude, syncChatGPT, syncCodex, syncGemini, syncCursor } = use
 // 전체 AI 서비스 목록 로드 (DB에 저장된 마지막 데이터 즉시 표시)
 const { data: services, refresh } = await useAsyncData('ai-services', list)
 
-// USD 서비스 월 구독료 합산 (monthly_cost가 null인 항목은 제외)
+// 같은 구독을 공유하는 그룹 — 그룹당 첫 번째 항목만 합계에 포함
+const SUBSCRIPTION_GROUPS = [
+  ['ChatGPT', 'Codex'],
+  ['Claude', 'Claude Code'],
+]
+
+function deduplicateBySubscription(list: AIService[]): AIService[] {
+  const counted = new Set<number>()
+  return list.filter((s) => {
+    const groupIdx = SUBSCRIPTION_GROUPS.findIndex(g => g.includes(s.name ?? ''))
+    if (groupIdx === -1) return true
+    if (counted.has(groupIdx)) return false
+    counted.add(groupIdx)
+    return true
+  })
+}
+
 const totalUSD = computed(() =>
-  (services.value ?? [])
+  deduplicateBySubscription(services.value ?? [])
     .filter((s: AIService) => s.currency === 'USD' && s.monthly_cost != null)
     .reduce((sum: number, s: AIService) => sum + s.monthly_cost!, 0)
 )
 
 const totalKRW = computed(() =>
-  (services.value ?? [])
+  deduplicateBySubscription(services.value ?? [])
     .filter((s: AIService) => s.currency === 'KRW' && s.monthly_cost != null)
     .reduce((sum: number, s: AIService) => sum + s.monthly_cost!, 0)
 )
@@ -90,7 +106,7 @@ const runCursorSync = async () => {
   }
 }
 
-// 저장된 next_billing_date가 오늘 이하면 결제일이 지난 것 → 자동 갱신
+// 저장된 next_billing_date가 오늘 이하면 결제일이 지난 것
 const isBillingPast = (name: string) => {
   const service = (services.value ?? []).find((s: AIService) => s.name === name)
   if (!service?.next_billing_date) return false
@@ -101,19 +117,15 @@ const isBillingPast = (name: string) => {
   return nextBilling <= today
 }
 
-onMounted(async () => {
-  // Claude, Codex, Cursor는 사용량이 자주 바뀌므로 항상 자동 갱신
-  // 같은 Chrome CDP 세션을 공유하므로 순차 실행 (병렬 시 충돌)
-  const hasCodex = (services.value ?? []).some((s: AIService) => s.name === 'Codex')
-  const hasCursor = (services.value ?? []).some((s: AIService) => s.name === 'Cursor')
+const isRefreshing = ref(false)
 
-  claudeSyncStatus.value = 'syncing'
-  try {
-    const result: any = await syncClaude()
-    claudeSyncStatus.value = result?.login_required ? 'login_required' : 'done'
-  } catch {
-    claudeSyncStatus.value = 'error'
-  }
+// 새로고침 버튼 클릭 시 실행 — 같은 Chrome CDP 세션 공유로 순차 실행
+const runAllSync = async () => {
+  if (isRefreshing.value) return
+  isRefreshing.value = true
+
+  const hasCodex = (services.value ?? []).some((s: AIService) => s.name === 'Codex')
+  const hasClaude = (services.value ?? []).some((s: AIService) => s.name === 'Claude')
 
   if (hasCodex) {
     codexSyncStatus.value = 'syncing'
@@ -125,26 +137,25 @@ onMounted(async () => {
     }
   }
 
-  if (hasCursor) {
-    cursorSyncStatus.value = 'syncing'
+  if (hasClaude) {
+    claudeSyncStatus.value = 'syncing'
     try {
-      const result: any = await syncCursor()
-      cursorSyncStatus.value = result?.login_required ? 'login_required' : 'done'
+      const result: any = await syncClaude()
+      claudeSyncStatus.value = result?.login_required ? 'login_required' : 'done'
     } catch {
-      cursorSyncStatus.value = 'error'
+      claudeSyncStatus.value = 'error'
     }
   }
 
   await refresh()
 
-  // ChatGPT, Gemini는 결제일이 지난 경우에만 자동 갱신 (그 외에는 수동 버튼)
+  // ChatGPT는 결제일이 지난 경우에만 갱신
   if (isBillingPast('ChatGPT')) {
     await runChatGPTSync()
   }
-  if (isBillingPast('Gemini')) {
-    await runGeminiSync()
-  }
-})
+
+  isRefreshing.value = false
+}
 
 const handleDeleted = async () => {
   await refresh()
@@ -155,7 +166,12 @@ const handleDeleted = async () => {
   <main>
     <header class="header">
       <h1>AI 서비스 현황</h1>
-      <NuxtLink to="/ai-services/new" class="btn-add">+ 추가</NuxtLink>
+      <div class="header-actions">
+        <button class="btn-refresh" :disabled="isRefreshing" @click="runAllSync">
+          {{ isRefreshing ? '갱신 중...' : '↻ 새로고침' }}
+        </button>
+        <NuxtLink to="/ai-services/new" class="btn-add">+ 추가</NuxtLink>
+      </div>
     </header>
 
     <!-- 총 구독료 요약 -->
@@ -171,25 +187,20 @@ const handleDeleted = async () => {
       <span class="count">{{ services?.length ?? 0 }}개 서비스</span>
 
       <!-- 갱신 상태 표시 -->
-      <span v-if="claudeSyncStatus === 'syncing'" class="sync-status syncing">Claude 갱신 중...</span>
-      <span v-else-if="claudeSyncStatus === 'done'" class="sync-status done">Claude ✓</span>
-      <span v-else-if="claudeSyncStatus === 'login_required'" class="sync-status warn">Claude 로그인 필요</span>
-      <span v-else-if="claudeSyncStatus === 'error'" class="sync-status error">Claude 갱신 실패</span>
-
       <span v-if="codexSyncStatus === 'syncing'" class="sync-status syncing">Codex 갱신 중...</span>
       <span v-else-if="codexSyncStatus === 'done'" class="sync-status done">Codex ✓</span>
       <span v-else-if="codexSyncStatus === 'login_required'" class="sync-status warn">Codex 로그인 필요</span>
       <span v-else-if="codexSyncStatus === 'error'" class="sync-status error">Codex 갱신 실패</span>
 
-      <span v-if="geminiSyncStatus === 'syncing'" class="sync-status syncing">Gemini 갱신 중...</span>
-      <span v-else-if="geminiSyncStatus === 'done'" class="sync-status done">Gemini ✓</span>
-      <span v-else-if="geminiSyncStatus === 'login_required'" class="sync-status warn">Gemini 로그인 필요</span>
-      <span v-else-if="geminiSyncStatus === 'error'" class="sync-status error">Gemini 갱신 실패</span>
+      <span v-if="claudeSyncStatus === 'syncing'" class="sync-status syncing">Claude 갱신 중...</span>
+      <span v-else-if="claudeSyncStatus === 'done'" class="sync-status done">Claude ✓</span>
+      <span v-else-if="claudeSyncStatus === 'login_required'" class="sync-status warn">Claude 로그인 필요</span>
+      <span v-else-if="claudeSyncStatus === 'error'" class="sync-status error">Claude 갱신 실패</span>
 
-      <span v-if="cursorSyncStatus === 'syncing'" class="sync-status syncing">Cursor 갱신 중...</span>
-      <span v-else-if="cursorSyncStatus === 'done'" class="sync-status done">Cursor ✓</span>
-      <span v-else-if="cursorSyncStatus === 'login_required'" class="sync-status warn">Cursor 로그인 필요</span>
-      <span v-else-if="cursorSyncStatus === 'error'" class="sync-status error">Cursor 갱신 실패</span>
+      <span v-if="chatgptSyncStatus === 'syncing'" class="sync-status syncing">ChatGPT 갱신 중...</span>
+      <span v-else-if="chatgptSyncStatus === 'done'" class="sync-status done">ChatGPT ✓</span>
+      <span v-else-if="chatgptSyncStatus === 'login_required'" class="sync-status warn">ChatGPT 로그인 필요</span>
+      <span v-else-if="chatgptSyncStatus === 'error'" class="sync-status error">ChatGPT 갱신 실패</span>
     </div>
 
     <!-- 서비스 카드 목록 -->
@@ -225,6 +236,23 @@ main {
   margin-bottom: 20px;
 }
 h1 { font-size: 1.3rem; }
+.header-actions {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+.btn-refresh {
+  padding: 6px 14px;
+  border: 1px solid #94a3b8;
+  border-radius: 6px;
+  color: #64748b;
+  background: none;
+  cursor: pointer;
+  font-size: 0.85rem;
+  font-family: monospace;
+}
+.btn-refresh:hover:not(:disabled) { background: #f1f5f9; }
+.btn-refresh:disabled { opacity: 0.5; cursor: not-allowed; }
 .btn-add {
   padding: 6px 14px;
   border: 1px solid #6366f1;

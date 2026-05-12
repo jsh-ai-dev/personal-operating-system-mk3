@@ -9,6 +9,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from motor.motor_asyncio import AsyncIOMotorDatabase
 
 from app.adapter.mongodb.ai_service_repository import AIServiceRepository
+from app.adapter.mongodb.scraper_meta_repository import ScraperMetaRepository
 from app.adapter.scraper.claude_scraper import scrape_claude
 from app.adapter.scraper.chatgpt_scraper import scrape_chatgpt
 from app.adapter.scraper.codex_scraper import scrape_codex
@@ -36,27 +37,30 @@ async def trigger_claude_scrape(
 
     # DB에서 Claude 서비스 레코드를 찾아 스크래핑 결과로 업데이트
     repo = AIServiceRepository(db)
-    service = await repo.find_by_name('Claude', user.id)
-    if service:
-        update_data = {}
 
-        if result.get('plan_name'):
-            update_data['plan_name'] = result['plan_name']
+    update_data = {}
 
-        # "2026년 5월 22일" → billing_day: 22
-        billing_day = _parse_billing_day(result.get('next_billing_date'))
-        if billing_day:
-            update_data['billing_day'] = billing_day
+    if result.get('plan_name'):
+        update_data['plan_name'] = result['plan_name']
 
-        # 현재 세션 사용량을 usage_current/limit에 반영
-        if result.get('session_usage_pct') is not None:
-            update_data['usage_current'] = result['session_usage_pct']
-            update_data['usage_limit'] = 100
-            reset_info = result.get('session_reset_in', '')
-            update_data['usage_unit'] = f"% (세션, {reset_info} 후 리셋)" if reset_info else "% (현재 세션)"
+    # "2026년 5월 22일" → billing_day: 22
+    billing_day = _parse_billing_day(result.get('next_billing_date'))
+    if billing_day:
+        update_data['billing_day'] = billing_day
 
-        if update_data:
-            await repo.update(service.id, update_data, user.id)
+    # 현재 세션 사용량을 usage_current/limit에 반영
+    if result.get('session_usage_pct') is not None:
+        update_data['usage_current'] = result['session_usage_pct']
+        update_data['usage_limit'] = 100
+        reset_info = result.get('session_reset_in', '')
+        update_data['usage_unit'] = f"% (세션, {reset_info} 후 리셋)" if reset_info else "% (현재 세션)"
+
+    if update_data:
+        # Claude와 Claude Code는 동일한 구독 플랜/사용량 공유 → 둘 다 업데이트
+        for name in ('Claude', 'Claude Code'):
+            service = await repo.find_by_name(name, user.id)
+            if service:
+                await repo.update(service.id, update_data, user.id)
 
     return result
 
@@ -239,3 +243,23 @@ def _parse_billing_day(date_str: str | None) -> int | None:
     except ValueError:
         pass
     return None
+
+
+@router.get("/meta")
+async def get_scraper_meta(
+    db: AsyncIOMotorDatabase = Depends(get_db),
+    user: AuthUser = Depends(get_current_user),
+):
+    repo = ScraperMetaRepository(db)
+    last_synced_at = await repo.get_last_synced_at(user.id)
+    return {"last_synced_at": last_synced_at}
+
+
+@router.patch("/meta")
+async def update_scraper_meta(
+    db: AsyncIOMotorDatabase = Depends(get_db),
+    user: AuthUser = Depends(get_current_user),
+):
+    repo = ScraperMetaRepository(db)
+    last_synced_at = await repo.set_last_synced_at(user.id)
+    return {"last_synced_at": last_synced_at}
