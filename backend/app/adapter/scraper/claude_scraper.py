@@ -125,20 +125,24 @@ def _scrape_sync() -> dict:
         _hide_windows(_get_visible_window_handles() - windows_before)
 
         try:
-            page.goto('https://claude.ai/settings/billing', wait_until='load', timeout=30000)
-            page.wait_for_timeout(500)
+            # networkidle: 청구서 목록이 별도 API로 로드되므로 네트워크 안정화까지 대기
+            # 페이지 이동 후 Chrome이 창을 다시 태스크바에 올릴 수 있으므로 매번 재숨김
+            page.goto('https://claude.ai/settings/billing', wait_until='networkidle', timeout=30000)
+            _hide_windows(_get_visible_window_handles() - windows_before)
             billing_text = page.inner_text('body')
 
             if _is_login_required(billing_text):
                 return {'login_required': True}
 
             page.goto('https://claude.ai/settings/usage', wait_until='networkidle', timeout=30000)
+            _hide_windows(_get_visible_window_handles() - windows_before)
             usage_text = page.inner_text('body')
 
             return {
                 'login_required': False,
                 'plan_name': _extract_plan(billing_text),
                 'next_billing_date': _extract_billing_date(billing_text),
+                'subscribed_at': _extract_subscribed_at(billing_text),
                 **_extract_usage(usage_text),
             }
         finally:
@@ -191,6 +195,21 @@ def _extract_usage(text: str) -> dict:
         result['weekly_reset_at'] = weekly_reset.group(1)
 
     return result
+
+
+def _extract_subscribed_at(text: str) -> str | None:
+    # 청구서 목록은 최신순이므로 마지막 날짜 = 최초 구독일
+    # "2026년 4월 22일" 형태로 표시됨
+    dates = re.findall(r'(\d{4}년 \d{1,2}월 \d{1,2}일)', text)
+    if not dates:
+        return None
+    oldest = dates[-1]
+    # "2026년 4월 22일" → ISO 변환
+    m = re.match(r'(\d{4})년 (\d{1,2})월 (\d{1,2})일', oldest)
+    if not m:
+        return None
+    from datetime import date
+    return date(int(m.group(1)), int(m.group(2)), int(m.group(3))).isoformat()
 
 
 def _extract_billing_date(text: str) -> str | None:

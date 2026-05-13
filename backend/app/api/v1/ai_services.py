@@ -23,6 +23,7 @@ class AIServiceBody(BaseModel):
     currency: str = "USD"
     billing_day: int | None = Field(default=None, ge=1, le=31)
     next_billing_date: str | None = None
+    subscribed_at: str | None = None
     usage_limit: float | None = None
     usage_current: float | None = None
     usage_unit: str | None = None

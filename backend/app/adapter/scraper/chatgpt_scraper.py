@@ -183,9 +183,20 @@ def _scrape_sync() -> dict:
                 access_token,
             )
 
+            # 구독 시작일 조회 — accounts/check의 첫 번째 account_id로 subscriptions 호출
+            sub_detail = None
+            if subscription:
+                account_id = next(iter(subscription.get('accounts', {})), None)
+                if account_id:
+                    sub_detail = _fetch_via_browser(
+                        page,
+                        f'https://chatgpt.com/backend-api/subscriptions?account_id={account_id}',
+                        access_token,
+                    )
+
             return {
                 'login_required': False,
-                **_parse_result(session, me, subscription),
+                **_parse_result(session, me, subscription, sub_detail),
             }
         finally:
             page.close()
@@ -193,7 +204,7 @@ def _scrape_sync() -> dict:
             _hide_windows(_get_visible_window_handles() - windows_before)
 
 
-def _parse_result(session: dict | None, me: dict | None, subscription: dict | None) -> dict:
+def _parse_result(session: dict | None, me: dict | None, subscription: dict | None, sub_detail: dict | None = None) -> dict:
     result = {}
 
     # 이메일/이름 — session.user가 가장 신뢰할 수 있는 소스
@@ -212,6 +223,10 @@ def _parse_result(session: dict | None, me: dict | None, subscription: dict | No
     billing_date = _extract_billing_date(subscription)
     if billing_date:
         result['next_billing_date'] = billing_date
+
+    # 구독 시작일 — subscriptions 엔드포인트의 active_start
+    if sub_detail and sub_detail.get('active_start'):
+        result['subscribed_at'] = sub_detail['active_start']
 
     return result
 

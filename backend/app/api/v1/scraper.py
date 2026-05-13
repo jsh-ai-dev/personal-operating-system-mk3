@@ -53,7 +53,10 @@ async def trigger_claude_scrape(
         update_data['usage_current'] = result['session_usage_pct']
         update_data['usage_limit'] = 100
         reset_info = result.get('session_reset_in', '')
-        update_data['usage_unit'] = f"% (세션, {reset_info} 후 리셋)" if reset_info else "% (현재 세션)"
+        update_data['usage_unit'] = f"% ({reset_info} 후 리셋)" if reset_info else "%"
+
+    if result.get('subscribed_at'):
+        update_data['subscribed_at'] = result['subscribed_at']
 
     if update_data:
         # Claude와 Claude Code는 동일한 구독 플랜/사용량 공유 → 둘 다 업데이트
@@ -93,6 +96,9 @@ async def trigger_chatgpt_scrape(
         if result.get('next_billing_date'):
             update_data['next_billing_date'] = result['next_billing_date']
 
+        if result.get('subscribed_at') and not service.subscribed_at:
+            update_data['subscribed_at'] = result['subscribed_at']
+
         if update_data:
             await repo.update(service.id, update_data, user.id)
 
@@ -128,16 +134,25 @@ async def trigger_codex_scrape(
         if result.get('next_billing_date'):
             update_data['next_billing_date'] = result['next_billing_date']
 
+        if result.get('subscribed_at') and not service.subscribed_at:
+            update_data['subscribed_at'] = result['subscribed_at']
+
         # 5시간 창 사용률을 usage_current/limit에 반영
         if result.get('primary_usage_pct') is not None:
             update_data['usage_current'] = result['primary_usage_pct']
             update_data['usage_limit'] = 100
             reset_iso = result.get('primary_reset_at', '')
             reset_label = _format_reset_label(reset_iso)
-            update_data['usage_unit'] = f"% (5h 창{reset_label})"
+            update_data['usage_unit'] = f"%{reset_label}"
 
         if update_data:
             await repo.update(service.id, update_data, user.id)
+
+    # ChatGPT와 같은 구독 공유 → subscribed_at을 ChatGPT에도 동기화
+    if result.get('subscribed_at'):
+        chatgpt = await repo.find_by_name('ChatGPT', user.id)
+        if chatgpt and not chatgpt.subscribed_at:
+            await repo.update(chatgpt.id, {'subscribed_at': result['subscribed_at']}, user.id)
 
     return result
 
@@ -219,11 +234,23 @@ async def trigger_cursor_scrape(
 
 
 def _format_reset_label(iso: str) -> str:
+    # ISO 타임스탬프를 "X시간 Y분 후 리셋" 형태의 상대 시간으로 변환
     if not iso:
         return ''
     try:
-        dt = datetime.fromisoformat(iso).astimezone(timezone(timedelta(hours=9)))
-        return f", {dt.strftime('%m/%d %H:%M')} 리셋"
+        dt = datetime.fromisoformat(iso).astimezone(timezone.utc)
+        diff = dt - datetime.now(timezone.utc)
+        total_minutes = max(0, int(diff.total_seconds() / 60))
+        if total_minutes == 0:
+            return ''
+        hours, minutes = divmod(total_minutes, 60)
+        if hours > 0 and minutes > 0:
+            label = f"{hours}시간 {minutes}분 후 리셋"
+        elif hours > 0:
+            label = f"{hours}시간 후 리셋"
+        else:
+            label = f"{minutes}분 후 리셋"
+        return f" ({label})"
     except ValueError:
         return ''
 

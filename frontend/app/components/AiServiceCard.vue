@@ -12,24 +12,29 @@ const emit = defineEmits<{ deleted: [id: string]; sync: [] }>()
 
 const { remove } = useAiServices()
 
-// 다음 결제일 계산: 이번 달 결제일이 이미 지났으면 다음 달로 (billing_day가 없으면 null)
-const nextBilling = computed(() => {
-  const day = props.service.billing_day
-  if (!day) return null
-  const today = new Date()
-  let date = new Date(today.getFullYear(), today.getMonth(), day)
-  if (date <= today) {
-    date = new Date(today.getFullYear(), today.getMonth() + 1, day)
-  }
-  return date.toLocaleDateString('ko-KR', { year: 'numeric', month: 'long', day: 'numeric' })
+// 구독일: subscribed_at ISO 문자열을 한국어 날짜로 변환
+const subscribedAt = computed(() => {
+  const raw = props.service.subscribed_at
+  if (!raw) return null
+  const d = new Date(raw)
+  return isNaN(d.getTime()) ? null : d.toLocaleDateString('ko-KR', { year: 'numeric', month: 'long', day: 'numeric' })
 })
 
-// 사용량 퍼센트 (한도와 현재 사용량 모두 있을 때만 계산)
+// usage_current가 1이면 스크래퍼 호출 자체로 인한 noise로 간주 → 0으로 표시
+const isEffectivelyZero = computed(() => props.service.usage_current === 1)
+
 const usagePct = computed(() => {
   const { usage_limit, usage_current } = props.service
   if (!usage_limit || usage_current === null || usage_current === undefined) return null
+  if (isEffectivelyZero.value) return 0
   return Math.min(Math.round((usage_current / usage_limit) * 1000) / 10, 100)
 })
+
+// 0으로 간주할 때는 리셋 시간 제거 — 매 스크래핑마다 바뀌는 의미없는 시간이기 때문
+const displayCurrent = computed(() => isEffectivelyZero.value ? 0 : props.service.usage_current)
+const displayUnit = computed(() =>
+  isEffectivelyZero.value ? '%' : (props.service.usage_unit ?? null)
+)
 
 // 사용량 비율에 따른 색상: 90% 이상 빨강, 70% 이상 노랑, 그 이하 초록
 const usageColor = computed(() => {
@@ -66,10 +71,10 @@ const handleDelete = async () => {
       </div>
     </div>
 
-    <!-- 다음 결제일 -->
+    <!-- 구독일 -->
     <div class="billing">
-      <template v-if="nextBilling">다음 결제일 <span class="date">{{ nextBilling }}</span></template>
-      <template v-else><span style="color:#ccc">결제일 미입력</span></template>
+      <template v-if="subscribedAt">구독일 <span class="date">{{ subscribedAt }}</span></template>
+      <template v-else><span style="color:#ccc">구독일 미입력</span></template>
     </div>
 
     <!-- 사용량 바: usage_limit이 설정된 경우에만 표시 -->
@@ -87,10 +92,10 @@ const handleDelete = async () => {
       </div>
       <div class="usage-detail">
         <span v-if="usagePct !== null">
-          {{ service.usage_current?.toLocaleString() }} / {{ service.usage_limit.toLocaleString() }}
+          {{ displayCurrent?.toLocaleString() }} / {{ service.usage_limit.toLocaleString() }}
         </span>
         <span v-else>한도 {{ service.usage_limit.toLocaleString() }}</span>
-        <span v-if="service.usage_unit" class="unit"> {{ service.usage_unit }}</span>
+        <span v-if="displayUnit" class="unit"> {{ displayUnit }}</span>
       </div>
     </div>
 

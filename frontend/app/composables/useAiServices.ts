@@ -10,6 +10,7 @@ export interface AIService {
   currency: string
   billing_day: number | null
   next_billing_date: string | null
+  subscribed_at: string | null
   usage_limit: number | null
   usage_current: number | null
   usage_unit: string | null

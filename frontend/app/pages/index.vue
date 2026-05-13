@@ -149,10 +149,10 @@ const runAllSync = async () => {
 
   await refresh()
 
-  // ChatGPT는 결제일이 지난 경우에만 갱신
-  if (isBillingPast('ChatGPT')) {
-    await runChatGPTSync()
-  }
+  // ChatGPT는 Codex 갱신 시 subscribed_at이 동기화되므로 별도 갱신 불필요
+  // if (isBillingPast('ChatGPT')) {
+  //   await runChatGPTSync()
+  // }
 
   isRefreshing.value = false
 }

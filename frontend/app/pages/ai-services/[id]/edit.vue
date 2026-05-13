@@ -25,6 +25,7 @@ const form = reactive({
   monthly_cost: (service.value.monthly_cost ?? '') as number | string,
   currency: service.value.currency,
   billing_day: (service.value.billing_day ?? '') as number | string,
+  subscribed_at: service.value.subscribed_at ?? '',
   usage_limit: (service.value.usage_limit ?? '') as number | string,
   usage_current: (service.value.usage_current ?? '') as number | string,
   usage_unit: service.value.usage_unit ?? '',
@@ -47,6 +48,7 @@ const submit = async () => {
       monthly_cost: toNum(form.monthly_cost),
       currency: form.currency,
       billing_day: toNum(form.billing_day),
+      subscribed_at: toStr(form.subscribed_at),
       usage_limit: toNum(form.usage_limit),
       usage_current: toNum(form.usage_current),
       usage_unit: toStr(form.usage_unit),
@@ -96,6 +98,11 @@ const submit = async () => {
       <div class="field">
         <label>결제일 (매월 몇 일)</label>
         <input v-model="form.billing_day" type="number" min="1" max="31" />
+      </div>
+
+      <div class="field">
+        <label>구독일</label>
+        <input v-model="form.subscribed_at" type="text" placeholder="스크래핑으로 자동 입력 (예: 2026-04-14)" />
       </div>
 
       <div class="section-label">사용량 (선택)</div>

@@ -9,8 +9,8 @@ const router = useRouter()
 
 // 사전 정의된 AI 서비스 이름 목록
 const SERVICE_NAMES = [
-  'ChatGPT', 'Codex', 'Gemini', 'Gemini Code Assist',
-  'Claude', 'Claude Code', 'Copilot', 'Cursor', '직접 입력',
+  'ChatGPT', 'Codex', 'Claude', 'Claude Code',
+  'Gemini', 'Gemini Code Assist', 'Copilot', 'Cursor', '직접 입력',
 ]
 
 const selectedName = ref('ChatGPT')
@@ -93,7 +93,7 @@ const submit = async () => {
 
       <div class="field">
         <label>플랜명</label>
-        <input v-model="form.plan_name" type="text" placeholder="예: Plus, Pro, Max (스크래핑으로 자동 입력)" />
+        <input v-model="form.plan_name" type="text" placeholder="예: Plus, Pro, Basic" />
       </div>
 
       <div class="row">
@@ -111,11 +111,9 @@ const submit = async () => {
       </div>
 
       <div class="field">
-        <label>결제일 (매월 몇 일)</label>
+        <label>구독일</label>
         <input v-model="form.billing_day" type="number" min="1" max="31" placeholder="예: 15" />
       </div>
-
-      <div class="section-label">사용량 (선택)</div>
 
       <div class="row">
         <div class="field">
@@ -130,16 +128,16 @@ const submit = async () => {
 
       <div class="field">
         <label>단위</label>
-        <input v-model="form.usage_unit" type="text" placeholder="예: messages / 3h, requests / month" />
+        <input v-model="form.usage_unit" type="text" />
       </div>
 
       <div class="field">
-        <label>청구 페이지 URL (선택)</label>
-        <input v-model="form.billing_url" type="url" placeholder="https://..." />
+        <label>청구 페이지 URL</label>
+        <input v-model="form.billing_url" type="url" />
       </div>
 
       <div class="field">
-        <label>메모 (선택)</label>
+        <label>비고</label>
         <textarea v-model="form.notes" rows="2" placeholder="참고 사항" />
       </div>
 

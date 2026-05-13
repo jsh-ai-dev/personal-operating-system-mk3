@@ -13,6 +13,7 @@ class AIService:
     currency: str                 # 통화 (USD, KRW)
     billing_day: int | None       # 매월 결제일 (1~31) — 선택
     next_billing_date: str | None   # 다음 결제 전체 날짜 (ISO 8601 또는 한국어 형식)
+    subscribed_at: str | None       # 구독 시작일 (ISO 8601)
     usage_limit: float | None    # 사용 한도 (입력하지 않으면 None)
     usage_current: float | None  # 현재 사용량 (입력하지 않으면 None)
     usage_unit: str | None       # 사용량 단위 (예: messages / 3h, requests / month)

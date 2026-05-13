@@ -164,16 +164,28 @@ def _scrape_sync() -> dict:
             )
             sub = sub_raw.get('body') if sub_raw.get('ok') else None
 
+            # 구독 시작일 조회 — accounts/check의 첫 번째 account_id로 subscriptions 호출
+            sub_detail = None
+            if sub:
+                account_id = next(iter(sub.get('accounts', {})), None)
+                if account_id:
+                    detail_raw = _fetch_via_browser_raw(
+                        page,
+                        f'https://chatgpt.com/backend-api/subscriptions?account_id={account_id}',
+                        access_token,
+                    )
+                    sub_detail = detail_raw.get('body') if detail_raw.get('ok') else None
+
             return {
                 'login_required': False,
-                **_parse_result(wham, sub),
+                **_parse_result(wham, sub, sub_detail),
             }
         finally:
             page.close()
             _hide_windows(_get_visible_window_handles() - windows_before)
 
 
-def _parse_result(wham: dict | None, sub: dict | None = None) -> dict:
+def _parse_result(wham: dict | None, sub: dict | None = None, sub_detail: dict | None = None) -> dict:
     result = {}
 
     if wham:
@@ -203,6 +215,9 @@ def _parse_result(wham: dict | None, sub: dict | None = None) -> dict:
             if val:
                 result['next_billing_date'] = str(val)
                 break
+
+    if sub_detail and sub_detail.get('active_start'):
+        result['subscribed_at'] = sub_detail['active_start']
 
     return result
 
