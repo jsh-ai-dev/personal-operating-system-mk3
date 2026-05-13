@@ -96,7 +96,7 @@ async def trigger_chatgpt_scrape(
         if result.get('next_billing_date'):
             update_data['next_billing_date'] = result['next_billing_date']
 
-        if result.get('subscribed_at') and not service.subscribed_at:
+        if result.get('subscribed_at'):
             update_data['subscribed_at'] = result['subscribed_at']
 
         if update_data:
@@ -134,7 +134,7 @@ async def trigger_codex_scrape(
         if result.get('next_billing_date'):
             update_data['next_billing_date'] = result['next_billing_date']
 
-        if result.get('subscribed_at') and not service.subscribed_at:
+        if result.get('subscribed_at'):
             update_data['subscribed_at'] = result['subscribed_at']
 
         # 5시간 창 사용률을 usage_current/limit에 반영
@@ -151,7 +151,7 @@ async def trigger_codex_scrape(
     # ChatGPT와 같은 구독 공유 → subscribed_at을 ChatGPT에도 동기화
     if result.get('subscribed_at'):
         chatgpt = await repo.find_by_name('ChatGPT', user.id)
-        if chatgpt and not chatgpt.subscribed_at:
+        if chatgpt:
             await repo.update(chatgpt.id, {'subscribed_at': result['subscribed_at']}, user.id)
 
     return result

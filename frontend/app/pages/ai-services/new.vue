@@ -22,7 +22,7 @@ const form = reactive({
   plan_name: '',
   monthly_cost: '' as number | string,
   currency: 'USD',
-  billing_day: '' as number | string,
+  subscribed_at: '',
   usage_limit: '' as number | string,
   usage_current: '' as number | string,
   usage_unit: '',
@@ -54,7 +54,8 @@ const submit = async () => {
       plan_name: toStr(form.plan_name),
       monthly_cost: toNum(form.monthly_cost),
       currency: form.currency,
-      billing_day: toNum(form.billing_day),
+      billing_day: null,
+      subscribed_at: toStr(form.subscribed_at),
       usage_limit: toNum(form.usage_limit),
       usage_current: toNum(form.usage_current),
       usage_unit: toStr(form.usage_unit),
@@ -112,7 +113,7 @@ const submit = async () => {
 
       <div class="field">
         <label>구독일</label>
-        <input v-model="form.billing_day" type="number" min="1" max="31" placeholder="예: 15" />
+        <input v-model="form.subscribed_at" type="date" />
       </div>
 
       <div class="row">

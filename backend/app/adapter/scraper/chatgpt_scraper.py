@@ -224,7 +224,7 @@ def _parse_result(session: dict | None, me: dict | None, subscription: dict | No
     if billing_date:
         result['next_billing_date'] = billing_date
 
-    # 구독 시작일 — subscriptions 엔드포인트의 active_start
+    # 구독 시작일 — subscriptions 엔드포인트의 active_start (UTC 날짜만 저장, 시간대 변환 방지)
     if sub_detail and sub_detail.get('active_start'):
         result['subscribed_at'] = sub_detail['active_start']
 

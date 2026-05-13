@@ -120,22 +120,18 @@ def _scrape_sync() -> dict:
         context = browser.contexts[0] if browser.contexts else browser.new_context()
         page = context.new_page()
 
-        # new_page() 호출 시 Chrome이 창을 다시 표시할 수 있으므로 즉시 숨기기
         time.sleep(0.3)
         _hide_windows(_get_visible_window_handles() - windows_before)
 
         try:
-            # networkidle: 청구서 목록이 별도 API로 로드되므로 네트워크 안정화까지 대기
-            # 페이지 이동 후 Chrome이 창을 다시 태스크바에 올릴 수 있으므로 매번 재숨김
-            page.goto('https://claude.ai/settings/billing', wait_until='networkidle', timeout=30000)
-            _hide_windows(_get_visible_window_handles() - windows_before)
+            page.goto('https://claude.ai/settings/billing', wait_until='load', timeout=30000)
+            page.wait_for_timeout(500)
             billing_text = page.inner_text('body')
 
             if _is_login_required(billing_text):
                 return {'login_required': True}
 
             page.goto('https://claude.ai/settings/usage', wait_until='networkidle', timeout=30000)
-            _hide_windows(_get_visible_window_handles() - windows_before)
             usage_text = page.inner_text('body')
 
             return {
@@ -147,7 +143,6 @@ def _scrape_sync() -> dict:
             }
         finally:
             page.close()
-            # 스크래핑 완료 후 남은 새 창 정리 / 크롬은 닫지 않음 — 백그라운드에서 계속 유지
             _hide_windows(_get_visible_window_handles() - windows_before)
 
 
