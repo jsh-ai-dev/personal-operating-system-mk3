@@ -112,6 +112,15 @@ class ConversationRepository:
         })
         return await self.find_conversation_by_id(str(result.inserted_id), owner_id)
 
+    async def find_conversations_by_ids(self, ids: list[str], owner_id: str) -> dict[str, "Conversation"]:
+        """여러 대화를 한 번의 쿼리로 가져온다. N+1 없이 검색 결과 보강에 사용."""
+        try:
+            oids = [ObjectId(id) for id in ids]
+        except InvalidId:
+            return {}
+        docs = await self.conversations.find({"_id": {"$in": oids}, "owner_id": owner_id}).to_list(None)
+        return {str(doc["_id"]): self._to_conversation(doc) for doc in docs}
+
     async def find_conversation_by_source_id(self, source_id: str, owner_id: str) -> Conversation | None:
         doc = await self.conversations.find_one({"source_id": source_id, "owner_id": owner_id})
         return self._to_conversation(doc) if doc else None
@@ -144,6 +153,16 @@ class ConversationRepository:
             await self.conversations.update_one(
                 {"_id": ObjectId(id), "owner_id": owner_id},
                 {"$unset": {"summary": "", "summary_model": "", "summary_cost_usd": ""},
+                 "$set": {"updated_at": datetime.now(timezone.utc)}},
+            )
+        except InvalidId:
+            pass
+
+    async def delete_quiz(self, id: str, owner_id: str) -> None:
+        try:
+            await self.conversations.update_one(
+                {"_id": ObjectId(id), "owner_id": owner_id},
+                {"$unset": {"quiz": "", "quiz_model": "", "quiz_cost_usd": ""},
                  "$set": {"updated_at": datetime.now(timezone.utc)}},
             )
         except InvalidId:

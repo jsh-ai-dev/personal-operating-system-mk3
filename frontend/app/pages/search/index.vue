@@ -108,7 +108,7 @@ const scoreColor = (score: number) => {
         type="text"
         class="search-input"
         autocomplete="off"
-        placeholder="예: React 훅 최적화, Docker 네트워크 설정, FastAPI 의존성 주입..."
+        placeholder="예: MSA 서비스 간 트랜잭션 처리, AWS 보안 그룹 설정, AI 시스템 프롬프트 작성법..."
         @keydown="handleKeydown"
       />
       <button class="btn-search" :disabled="isSearching || !query.trim()" @click="handleSearch">

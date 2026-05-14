@@ -190,6 +190,14 @@ async def generate_quiz(
     except ValueError as e:
         raise HTTPException(status_code=404, detail=str(e))
 
+@router.delete("/conversations/{id}/quiz", status_code=204)
+async def delete_quiz(
+    id: str,
+    svc: ChatService = Depends(_get_svc),
+    user: AuthUser = Depends(get_current_user),
+):
+    await svc.repo.delete_quiz(id, user.id)
+
 
 _GEMINI_DISABLED = {"gemini-2.5-pro"}
 

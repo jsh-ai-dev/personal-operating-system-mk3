@@ -130,7 +130,13 @@ class ChatService:
         await self.repo.update_message_content(message_id, owner_id, content)
 
     async def delete_conversation(self, owner_id: str, conversation_id: str) -> bool:
-        return await self.repo.delete_conversation(conversation_id, owner_id)
+        deleted = await self.repo.delete_conversation(conversation_id, owner_id)
+        if deleted and self.search_svc:
+            try:
+                await self.search_svc.vector_repo.delete(conversation_id)
+            except Exception:
+                pass  # 미인덱싱 대화거나 이미 없는 경우 무시
+        return deleted
 
     async def delete_message(self, owner_id: str, message_id: str) -> bool:
         return await self.repo.delete_message(message_id, owner_id)

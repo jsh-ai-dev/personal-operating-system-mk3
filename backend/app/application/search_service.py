@@ -104,16 +104,24 @@ class SearchService:
         await self.vector_repo.ensure_collection()
         points = await self.vector_repo.search(vector, owner_id, limit)
 
-        return {
-            "results": [
-                {
-                    "conversation_id": p.payload["conversation_id"],
-                    "title": p.payload["title"],
-                    "model": p.payload["model"],
-                    "created_at": p.payload["created_at"],
-                    "score": round(p.score, 4),
-                }
-                for p in points
-            ],
-            "cost_usd": cost_usd,
-        }
+        # Qdrant payload에 없는 필드(provider, summary 여부, message_count 등)를 MongoDB에서 한 번에 보강
+        conv_ids = [p.payload["conversation_id"] for p in points]
+        conv_map = await self.conv_repo.find_conversations_by_ids(conv_ids, owner_id)
+
+        results = []
+        for p in points:
+            cid = p.payload["conversation_id"]
+            conv = conv_map.get(cid)
+            results.append({
+                "conversation_id": cid,
+                "title": p.payload["title"],
+                "model": p.payload["model"],
+                "provider": conv.provider if conv else "",
+                "summary": bool(conv.summary) if conv else False,
+                "message_count": conv.message_count if conv else 0,
+                "total_cost_usd": conv.total_cost_usd if conv else 0.0,
+                "created_at": p.payload["created_at"],
+                "score": round(p.score, 4),
+            })
+
+        return {"results": results, "cost_usd": cost_usd}
