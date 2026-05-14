@@ -182,11 +182,13 @@ async def generate_quiz(
         raise HTTPException(status_code=404, detail=str(e))
 
 
+_GEMINI_DISABLED = {"gemini-2.5-pro"}
+
 @router.get("/gemini/models")
 async def get_gemini_models():
     # pricing 대신 rate limit 반환 (무료 티어 사용 중)
     return [
-        {"id": model_id, "rpm": l["rpm"], "rpd": l["rpd"], "tpm": l["tpm"]}
+        {"id": model_id, "rpm": l["rpm"], "rpd": l["rpd"], "tpm": l["tpm"], "enabled": model_id not in _GEMINI_DISABLED}
         for model_id, l in GEMINI_LIMITS.items()
     ]
 
@@ -211,10 +213,12 @@ async def chat_gemini(
     )
 
 
+_CLAUDE_DISABLED = {"claude-sonnet-4-6", "claude-opus-4-7"}
+
 @router.get("/claude/models")
 async def get_claude_models():
     models = [
-        {"id": model_id, "input_per_1m": p["input"], "output_per_1m": p["output"]}
+        {"id": model_id, "input_per_1m": p["input"], "output_per_1m": p["output"], "enabled": model_id not in _CLAUDE_DISABLED}
         for model_id, p in CLAUDE_PRICING.items()
     ]
     return sorted(models, key=lambda m: m["input_per_1m"])
@@ -240,10 +244,12 @@ async def chat_claude(
     )
 
 
+_OPENAI_DISABLED = {"gpt-5"}
+
 @router.get("/openai/models")
 async def get_openai_models():
     models = [
-        {"id": model_id, "input_per_1m": p["input"], "output_per_1m": p["output"]}
+        {"id": model_id, "input_per_1m": p["input"], "output_per_1m": p["output"], "enabled": model_id not in _OPENAI_DISABLED}
         for model_id, p in OPENAI_PRICING.items()
     ]
     return sorted(models, key=lambda m: m["input_per_1m"])

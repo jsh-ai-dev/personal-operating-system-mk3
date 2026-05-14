@@ -148,14 +148,14 @@ const formatDate = (iso: string) =>
 // 소스 레이블 — 임포트는 모델값 기준, API는 provider 기준
 const convSourceLabel = (conv: { provider: string; model: string }): string => {
   const labels: Record<string, string> = {
-    'codex': 'JetBrains',
+    'codex': 'Codex',
     'claude-code': 'Claude Code',
-    'claude': 'Claude.ai',
+    'claude': 'Claude',
     'gemini': 'Gemini',
     'chatgpt': 'ChatGPT',
   }
   if (labels[conv.model]) return labels[conv.model]
-  return ({ openai: 'OpenAI', anthropic: 'Claude', google: 'Gemini' })[conv.provider] ?? conv.provider
+  return ({ openai: 'OpenAI', anthropic: 'Claude API', google: 'Gemini API' })[conv.provider] ?? conv.provider
 }
 
 // 대화 타입 — API(직접 호출) / 채팅 임포트(구독 서비스) / 코딩 임포트(코딩 어시스턴트)
@@ -214,7 +214,7 @@ const filteredConversations = computed(() => {
       <h1>AI Chat</h1>
       <div class="header-actions">
         <button class="btn-toggle-hidden" :class="{ active: showHidden }" @click="toggleShowHidden">
-          {{ showHidden ? '숨김 숨기기' : '숨김 보기' }}
+          {{ showHidden ? '완료' : '숨김 관리' }}
         </button>
         <button class="btn-import" :disabled="importingCodex || importingGemini || importingClaude || importingClaudeCode || importingChatGpt" @click="importModalOpen = true">
           내역 가져오기
@@ -231,7 +231,6 @@ const filteredConversations = computed(() => {
             {{ opt.label }} {{ opt.enabled ? '' : '(준비 중...)' }}
           </option>
         </select>
-        <p class="modal-hint">현재 구현된 항목만 선택 가능합니다.</p>
         <div class="modal-actions">
           <button class="btn-import" @click="importModalOpen = false">취소</button>
           <button class="btn-import" :disabled="importingCodex || importingGemini || importingClaude || importingClaudeCode || importingChatGpt || !importOptions.find(v => v.key === selectedImportKey)?.enabled" @click="runImportByKey">
@@ -272,21 +271,26 @@ const filteredConversations = computed(() => {
         <NuxtLink :to="`/chat/${conv.id}`" class="conv-item">
           <div class="conv-meta">
             <span class="badge" :class="conv.provider">{{ convSourceLabel(conv) }}</span>
-            <span class="type-tag" :class="convType(conv).cls">{{ convType(conv).label }}</span>
-            <span class="model">{{ conv.model }}</span>
-            <span class="cost">{{ formatCost(conv.total_cost_usd) }}</span>
-            <span class="tokens">{{ (conv.total_tokens_input + conv.total_tokens_output).toLocaleString() }} tokens</span>
+            <template v-if="convType(conv).label === 'API'">
+              <span class="model">{{ conv.model }}</span>
+              <span class="cost">{{ formatCost(conv.total_cost_usd) }}</span>
+            </template>
           </div>
           <div class="conv-title">{{ conv.title }}</div>
           <div class="conv-stats">
             메시지 {{ conv.message_count }}개 · 생성 {{ formatDate(conv.created_at) }}
           </div>
         </NuxtLink>
-        <div class="side-actions">
-          <button v-if="!conv.is_hidden" class="btn-hide" @click="hide($event, conv.id)" title="숨기기">숨김</button>
-          <button v-else class="btn-unhide" @click="unhide($event, conv.id)" title="숨김 취소">복원</button>
-          <button class="btn-delete" @click="removeConversation($event, conv.id)" title="삭제">삭제</button>
-        </div>
+        <button v-if="showHidden" class="btn-eye" :class="{ 'btn-eye-hidden': conv.is_hidden }" @click="conv.is_hidden ? unhide($event, conv.id) : hide($event, conv.id)" :title="conv.is_hidden ? '숨김 해제' : '숨기기'">
+          <svg v-if="conv.is_hidden" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="16" height="16">
+            <path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/>
+            <line x1="1" y1="1" x2="23" y2="23"/>
+          </svg>
+          <svg v-else viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="16" height="16">
+            <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/>
+            <circle cx="12" cy="12" r="3"/>
+          </svg>
+        </button>
       </div>
     </div>
 
@@ -450,66 +454,39 @@ h1 { font-size: 1.3rem; margin: 0; }
   background: #e2e8f0;
 }
 .list { display: flex; flex-direction: column; gap: 8px; }
-.conv-row { display: flex; align-items: stretch; gap: 6px; }
+.conv-row { position: relative; }
 .conv-item {
-  flex: 1;
   display: block;
-  padding: 14px 16px;
+  padding: 14px 44px 14px 16px;
   border: 1px solid #e5e7eb;
   border-radius: 8px;
   background: #fff;
   text-decoration: none;
   color: inherit;
   transition: border-color 0.15s;
-  min-width: 0;
 }
 .conv-item:hover { border-color: #6366f1; }
-.side-actions {
+.btn-eye {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  width: 28px;
+  height: 28px;
   display: flex;
-  flex-direction: column;
-  gap: 6px;
-  align-self: center;
-}
-.btn-hide {
-  flex-shrink: 0;
-  min-width: 46px;
-  height: 32px;
-  background: none;
-  border: 1px solid #e5e7eb;
-  border-radius: 8px;
-  color: #64748b;
-  font-size: 0.75rem;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  background: transparent;
+  color: #cbd5e1;
   cursor: pointer;
-  transition: all 0.15s;
+  z-index: 1;
+  transition: color 0.15s;
 }
-.btn-hide:hover { border-color: #f87171; color: #f87171; background: #fef2f2; }
-.btn-unhide {
-  flex-shrink: 0;
-  min-width: 46px;
-  height: 32px;
-  background: #eef2ff;
-  border: 1px solid #6366f1;
-  border-radius: 8px;
-  color: #6366f1;
-  font-size: 0.75rem;
-  cursor: pointer;
-  transition: all 0.15s;
-}
-.btn-unhide:hover { background: #e0e7ff; }
-.btn-delete {
-  flex-shrink: 0;
-  min-width: 46px;
-  height: 32px;
-  background: #fff;
-  border: 1px solid #fecaca;
-  border-radius: 8px;
-  color: #ef4444;
-  font-size: 0.75rem;
-  cursor: pointer;
-}
-.btn-delete:hover { background: #fef2f2; }
+.btn-eye:hover { color: #94a3b8; }
+.btn-eye-hidden { color: #6366f1; }
+.btn-eye-hidden:hover { color: #4f46e5; }
 /* 숨긴 항목은 흐리게 표시 */
-.conv-row:has(.btn-unhide) .conv-item { opacity: 0.45; }
+.conv-row:has(.btn-eye-hidden) .conv-item { opacity: 0.45; }
 .conv-meta {
   display: flex;
   align-items: center;
@@ -522,18 +499,20 @@ h1 { font-size: 1.3rem; margin: 0; }
   border-radius: 4px;
   font-size: 0.7rem;
   font-weight: 600;
+  line-height: 1;
   background: #f3f4f6;
   color: #374151;
 }
 .badge.openai { background: #d1fae5; color: #065f46; }
 .badge.anthropic { background: #fde68a; color: #78350f; }
 .badge.google { background: #dbeafe; color: #1e3a8a; }
-.badge.jetbrains { background: #ede9fe; color: #5b21b6; }
+.badge.jetbrains { background: #d1fae5; color: #065f46; }
 .type-tag {
   padding: 2px 6px;
   border-radius: 4px;
   font-size: 0.68rem;
   font-weight: 500;
+  line-height: 1;
 }
 .type-api { background: #f3f4f6; color: #6b7280; }
 .type-chat { background: #ecfdf5; color: #065f46; }

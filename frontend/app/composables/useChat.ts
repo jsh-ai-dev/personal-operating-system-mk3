@@ -45,6 +45,7 @@ export interface Message {
 export interface AiModel {
   id: string
   provider: 'openai' | 'claude' | 'gemini'
+  enabled?: boolean
   // OpenAI / Claude: 가격 기반
   input_per_1m?: number
   output_per_1m?: number

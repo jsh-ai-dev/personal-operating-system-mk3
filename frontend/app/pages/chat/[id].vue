@@ -9,7 +9,7 @@ import type { AiModel, Conversation, Message } from '~/composables/useChat'
 
 const route = useRoute()
 const router = useRouter()
-const { getConversation, getMessages, getAllModels, chatOpenAI, chatGemini, chatClaude, summarizeConversation, setMessageHidden, updateMessageContent, deleteMessage } = useChat()
+const { getConversation, getMessages, getAllModels, chatOpenAI, chatGemini, chatClaude, summarizeConversation, setMessageHidden, updateMessageContent, deleteMessage, deleteConversation } = useChat()
 
 const toggleMessageHidden = async (msg: Message) => {
   if (msg.id.startsWith('temp-')) return
@@ -93,7 +93,7 @@ const summarizing = ref(false)
 const summaryError = ref('')
 
 const priorModel = messages.value.find(m => m.role === 'assistant')?.model ?? ''
-const selectedModelId = ref(models.find(m => m.id === priorModel)?.id ?? models[0]?.id ?? '')
+const selectedModelId = ref(models.find(m => m.id === priorModel)?.id ?? models.find(m => m.enabled !== false)?.id ?? '')
 const selectedModel = computed<AiModel | undefined>(() => models.find(m => m.id === selectedModelId.value))
 const IMPORT_MODELS = new Set(['codex', 'claude-code', 'claude', 'gemini'])
 // 임포트 대화는 읽기 전용으로 고정
@@ -115,6 +115,13 @@ const IMPORT_LABELS: Record<string, string> = {
 const readOnlyLabel = computed(() =>
   IMPORT_LABELS[conversationData.value?.model ?? ''] ?? '가져온 대화'
 )
+
+const handleDelete = async () => {
+  if (!currentConvId.value) return
+  if (!confirm('이 대화 내역을 완전히 삭제할까요?')) return
+  await deleteConversation(currentConvId.value)
+  await navigateTo('/chat')
+}
 
 // 요약 모델 셀렉트 — OpenAI 모델만 필터링, 기본값 gpt-5-mini
 const summaryModels = computed(() => models.filter(m => m.provider === 'openai'))
@@ -167,11 +174,20 @@ const scrollToBottom = async () => {
   }
 }
 
+const inputRef = ref<HTMLTextAreaElement | null>(null)
+
+const fitInput = (el: HTMLTextAreaElement | null) => {
+  if (!el) return
+  el.style.height = 'auto'
+  el.style.height = `${el.scrollHeight}px`
+}
+
 const sendMessage = async () => {
   const text = inputText.value.trim()
   if (!text || isStreaming.value) return
 
   inputText.value = ''
+  if (inputRef.value) { inputRef.value.style.height = 'auto' }
   errorMessage.value = ''
   isStreaming.value = true
   streamingContent.value = ''
@@ -257,9 +273,10 @@ const modelLabel = (m: AiModel) => {
     <header class="header">
       <NuxtLink to="/chat" class="back">← 목록으로</NuxtLink>
       <select v-show="!isReadOnly" v-model="selectedModelId" class="model-select" :disabled="isStreaming || !!currentConvId">
-        <option v-for="m in models" :key="m.id" :value="m.id">{{ modelLabel(m) }}</option>
+        <option v-for="m in models" :key="m.id" :value="m.id" :disabled="m.enabled === false">{{ modelLabel(m) }}</option>
       </select>
       <span v-show="isReadOnly" class="readonly-label">{{ readOnlyLabel }}</span>
+      <button v-if="!isNew && currentConvId" class="btn-delete" :disabled="isStreaming" @click="handleDelete">삭제</button>
     </header>
 
     <!-- 요약 컨트롤 바 — 새 대화에서는 숨김 -->
@@ -344,16 +361,15 @@ const modelLabel = (m: AiModel) => {
 
     <div v-show="!isReadOnly" class="input-area">
       <textarea
+        ref="inputRef"
         v-model="inputText"
         class="input"
-        placeholder="메시지 입력 (Shift+Enter 줄바꿈)"
-        rows="3"
+        placeholder="메시지 입력 (Enter 전송 / Shift+Enter 줄바꿈)"
+        rows="1"
         :disabled="isStreaming"
         @keydown="handleKeydown"
+        @input="fitInput($event.target as HTMLTextAreaElement)"
       />
-      <button class="send-btn" :disabled="isStreaming || !inputText.trim()" @click="sendMessage">
-        {{ isStreaming ? '···' : '전송' }}
-      </button>
     </div>
   </div>
 </template>
@@ -394,7 +410,22 @@ const modelLabel = (m: AiModel) => {
   min-width: 0;
 }
 .model-select:disabled { opacity: 0.5; cursor: default; }
+.model-select option:disabled { color: #c0c4cc; }
 .readonly-label { font-size: 0.8rem; color: #9ca3af; }
+.btn-delete {
+  flex-shrink: 0;
+  margin-left: auto;
+  height: 28px;
+  padding: 0 10px;
+  border: 1px solid #fecaca;
+  border-radius: 6px;
+  background: #fff;
+  color: #ef4444;
+  font-size: 0.75rem;
+  cursor: pointer;
+}
+.btn-delete:hover { background: #fef2f2; }
+.btn-delete:disabled { opacity: 0.4; cursor: default; }
 .messages {
   flex: 1;
   overflow-y: auto;
@@ -512,39 +543,26 @@ const modelLabel = (m: AiModel) => {
   font-size: 0.85rem;
 }
 .input-area {
-  display: flex;
-  gap: 10px;
   padding: 16px 0;
   border-top: 1px solid #e5e7eb;
   flex-shrink: 0;
 }
 .input {
-  flex: 1;
+  width: 100%;
+  box-sizing: border-box;
   font-family: monospace;
   font-size: 0.9rem;
   border: 1px solid #d1d5db;
   border-radius: 8px;
   padding: 10px 12px;
   resize: none;
+  overflow: hidden;
   outline: none;
   line-height: 1.5;
+  max-height: 200px;
+  overflow-y: auto;
 }
 .input:focus { border-color: #6366f1; }
-.send-btn {
-  padding: 0 20px;
-  background: #6366f1;
-  color: #fff;
-  border: none;
-  border-radius: 8px;
-  font-family: monospace;
-  font-size: 0.9rem;
-  cursor: pointer;
-  white-space: nowrap;
-  align-self: flex-end;
-  height: 40px;
-}
-.send-btn:disabled { opacity: 0.5; cursor: default; }
-.send-btn:not(:disabled):hover { background: #4f46e5; }
 .summary-bar {
   display: flex;
   align-items: center;

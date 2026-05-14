@@ -19,33 +19,24 @@ CLAUDE_PRICING: dict[str, dict[str, float]] = {
 }
 
 OPENAI_PRICING: dict[str, dict[str, float]] = {
-    "gpt-5-nano":   {"input": 0.05,  "output": 0.40},
-    "gpt-5.4-nano": {"input": 0.20,  "output": 1.25},
-    "gpt-5-mini":   {"input": 0.25,  "output": 2.00},
-    "gpt-5.4-mini": {"input": 0.75,  "output": 4.50},
-    "gpt-5":        {"input": 1.25,  "output": 10.00},
-    "gpt-5.4":      {"input": 2.50,  "output": 15.00},
+    "gpt-5-nano": {"input": 0.05,  "output": 0.40},
+    "gpt-5-mini": {"input": 0.25,  "output": 2.00},
+    "gpt-5":      {"input": 1.25,  "output": 10.00},
 }
 
 # 무료 티어 사용 — 비용 대신 rate limit으로 관리
 # cost_usd 계산 시 0으로 처리
 GEMINI_PRICING: dict[str, dict[str, float]] = {
-    "gemini-2.5-flash-lite":         {"input": 0.0, "output": 0.0},
-    "gemini-2.5-flash":              {"input": 0.0, "output": 0.0},
-    "gemini-2.5-pro":                {"input": 0.0, "output": 0.0},
-    "gemini-3.1-flash-lite-preview": {"input": 0.0, "output": 0.0},
-    "gemini-3.1-flash-preview":      {"input": 0.0, "output": 0.0},
-    "gemini-3.1-pro-preview":        {"input": 0.0, "output": 0.0},
+    "gemini-2.5-flash-lite": {"input": 0.0, "output": 0.0},
+    "gemini-2.5-flash":      {"input": 0.0, "output": 0.0},
+    "gemini-2.5-pro":        {"input": 0.0, "output": 0.0},
 }
 
 # 무료 티어 rate limit (rpm: 분당 요청, rpd: 일일 요청, tpm: 분당 토큰)
 GEMINI_LIMITS: dict[str, dict[str, int]] = {
-    "gemini-2.5-flash-lite":         {"rpm": 30, "rpd": 2000, "tpm": 1_000_000},
-    "gemini-2.5-flash":              {"rpm": 15, "rpd": 1500, "tpm": 1_000_000},
-    "gemini-2.5-pro":                {"rpm": 5,  "rpd": 100,  "tpm": 250_000},
-    "gemini-3.1-flash-lite-preview": {"rpm": 30, "rpd": 1500, "tpm": 500_000},
-    "gemini-3.1-flash-preview":      {"rpm": 15, "rpd": 1000, "tpm": 250_000},
-    "gemini-3.1-pro-preview":        {"rpm": 2,  "rpd": 50,   "tpm": 250_000},
+    "gemini-2.5-flash-lite": {"rpm": 30, "rpd": 2000, "tpm": 1_000_000},
+    "gemini-2.5-flash":      {"rpm": 15, "rpd": 1500, "tpm": 1_000_000},
+    "gemini-2.5-pro":        {"rpm": 5,  "rpd": 100,  "tpm": 250_000},
 }
 
 
