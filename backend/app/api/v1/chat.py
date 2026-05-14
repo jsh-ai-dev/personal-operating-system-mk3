@@ -165,6 +165,15 @@ async def summarize_conversation(
         raise HTTPException(status_code=404, detail=str(e))
 
 
+@router.delete("/conversations/{id}/summary", status_code=204)
+async def delete_summary(
+    id: str,
+    svc: ChatService = Depends(_get_svc),
+    user: AuthUser = Depends(get_current_user),
+):
+    await svc.repo.delete_summary(id, user.id)
+
+
 @router.post("/conversations/{id}/quiz")
 async def generate_quiz(
     id: str,

@@ -139,6 +139,16 @@ class ConversationRepository:
         except InvalidId:
             pass
 
+    async def delete_summary(self, id: str, owner_id: str) -> None:
+        try:
+            await self.conversations.update_one(
+                {"_id": ObjectId(id), "owner_id": owner_id},
+                {"$unset": {"summary": "", "summary_model": "", "summary_cost_usd": ""},
+                 "$set": {"updated_at": datetime.now(timezone.utc)}},
+            )
+        except InvalidId:
+            pass
+
     async def update_quiz(self, id: str, owner_id: str, quiz: list, model: str, cost_usd: float) -> None:
         try:
             await self.conversations.update_one(
