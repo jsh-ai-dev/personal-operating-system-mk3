@@ -50,34 +50,27 @@ def _chat(prompt: str, max_tokens: int, model: str) -> tuple[str, int, int]:
     return content, (usage.prompt_tokens if usage else 0), (usage.completion_tokens if usage else 0)
 
 
-def _build_highlighted_html(content: str, keywords: list[str]) -> str:
-    """
-    AI가 뽑은 키워드·기업명을 기준으로 서버에서 직접 하이라이팅한다.
-    숫자 포함 문장 → <span class="num">, 키워드 포함 문장 → <span class="kw">
-    API 토큰을 쓰지 않아 비용 절감.
-    """
-    # 키워드 매칭용 패턴 (대소문자 무시)
-    kw_pattern = re.compile(
-        "|".join(re.escape(k) for k in keywords if k),
-        re.IGNORECASE,
-    ) if keywords else None
-
-    lines = content.splitlines()
-    html_lines = []
-    for line in lines:
-        stripped = line.strip()
-        if not stripped:
-            html_lines.append("")
-            continue
-        escaped = stripped.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
-        if _NUM_PATTERN.search(stripped):
-            html_lines.append(f'<span class="num">{escaped}</span>')
-        elif kw_pattern and kw_pattern.search(stripped):
-            html_lines.append(f'<span class="kw">{escaped}</span>')
-        else:
-            html_lines.append(escaped)
-
-    return "<br>".join(html_lines)
+# 하이라이팅 기능 비활성화 — 숫자 문장(빨강)·키워드 문장(파랑) 색상 표시가 실용적이지 않아 제거
+# 재활성화 시: _analyze()에서 주석 해제 후 highlighted_html 필드에 결과 저장
+# def _build_highlighted_html(content: str, keywords: list[str]) -> str:
+#     kw_pattern = re.compile(
+#         "|".join(re.escape(k) for k in keywords if k), re.IGNORECASE,
+#     ) if keywords else None
+#     lines = content.splitlines()
+#     html_lines = []
+#     for line in lines:
+#         stripped = line.strip()
+#         if not stripped:
+#             html_lines.append("")
+#             continue
+#         escaped = stripped.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+#         if _NUM_PATTERN.search(stripped):
+#             html_lines.append(f'<span class="num">{escaped}</span>')
+#         elif kw_pattern and kw_pattern.search(stripped):
+#             html_lines.append(f'<span class="kw">{escaped}</span>')
+#         else:
+#             html_lines.append(escaped)
+#     return "<br>".join(html_lines)
 
 
 def _analyze(title: str, content: str, model: str) -> dict:
@@ -86,29 +79,31 @@ def _analyze(title: str, content: str, model: str) -> dict:
     highlighted_html은 응답에서 제외하고 로컬에서 생성해 토큰 비용을 절감한다.
     분석에 사용한 모델명과 비용(USD)도 함께 반환한다.
     """
-    prompt = f"""다음 기사를 분석해서 JSON만 반환해줘. 면접 준비를 위해 기업을 조사하는 용도야.
+    prompt = f"""다음 기사를 분석해서 JSON만 반환해줘. 개발자 면접 준비를 위해 기업을 조사하는 용도야.
 
 제목: {title}
 내용: {content}
 
 {{
-  "companies": ["기사의 주제가 되는 핵심 기업 1~2개만 (언급만 된 기업 제외)"],
-  "tags": ["기사의 핵심 주제 태그 1~3개 (예: 반도체, AI, 파운드리)"],
-  "keywords": [{{"keyword": "개발자에게 중요한 기술 키워드", "explanation": "한 줄 설명"}}],
-  "motivation_summary": "지원 동기에 활용할 기업 제품·기술·사업 특징 요약 (3~5문장)",
-  "questions": [{{"question": "기사만으로 알기 어려운 내용을 현직자에게 묻는 질문", "expected_answer": "예상 답변 2~3문장"}}]
+  "companies": ["기사의 주제가 되는 핵심 기업 1~2개 (언급만 된 기업 제외, 없으면 빈 배열 [])"],
+  "tags": ["기사의 핵심 주제 한 단어 태그 1~2개"],
+  "summary": "기사 핵심 내용 요약 (4~6문장)",
+  "keywords": [{{"keyword": "개발자에게 중요한 기술 키워드 3개", "explanation": "간단한 설명"}}],
+  "motivation_summary": "지원 동기에 활용할 기업 제품·기술·사업 특징 요약 (2~4문장)",
+  "questions": [{{"question": "기사만으로 알기 어려운 내용을 현직자에게 묻는 질문 2개", "expected_answer": "예상 답변 1~2문장"}}]
 }}
 
-keywords는 정확히 3개, questions는 정확히 2개 반환해줘."""
+"""
 
-    raw, tokens_in, tokens_out = _chat(prompt, 3000, model)
+    raw, tokens_in, tokens_out = _chat(prompt, 5000, model)
     data = json.loads(raw)
 
     pricing = OPENAI_PRICING.get(model, {"input": 0.0, "output": 0.0})
     cost_usd = (tokens_in * pricing["input"] + tokens_out * pricing["output"]) / 1_000_000
 
-    kw_terms = [k["keyword"] for k in data.get("keywords", [])] + data.get("companies", [])
-    data["highlighted_html"] = _build_highlighted_html(content, kw_terms)
+    # 하이라이팅 비활성화 — _build_highlighted_html() 참고
+    # kw_terms = [k["keyword"] for k in data.get("keywords", [])] + data.get("companies", [])
+    # data["highlighted_html"] = _build_highlighted_html(content, kw_terms)
     data["analysis_model"] = model
     data["analysis_cost_usd"] = cost_usd
 
@@ -119,11 +114,12 @@ class NewsService:
     def __init__(self, repo: ArticleRepository):
         self.repo = repo
 
-    async def scrape(self, date: str, owner_id: str) -> list[Article]:
+    async def scrape(self, date: str, owner_id: str) -> tuple[list[Article], int]:
         """
         date 형식: "2026-05-04"
         1~5면 기사를 수집하고 companies/tags를 자동 추출해 저장한다.
         이미 저장된 기사(url 중복)는 건너뛴다.
+        반환: (전체 기사 목록, 새로 추가된 건수)
         """
         # date "2026-05-04" → "20260504"
         date_compact = date.replace("-", "")
@@ -145,11 +141,10 @@ class NewsService:
                 "analysis": None,
             })
 
-        if not new_articles:
-            return await self.repo.find_by_date(date, owner_id)
+        if new_articles:
+            await self.repo.insert_many(new_articles, owner_id)
 
-        await self.repo.insert_many(new_articles, owner_id)
-        return await self.repo.find_by_date(date, owner_id)
+        return await self.repo.find_by_date(date, owner_id), len(new_articles)
 
     async def list_by_date(self, date: str, owner_id: str) -> list[Article]:
         return await self.repo.find_by_date(date, owner_id)

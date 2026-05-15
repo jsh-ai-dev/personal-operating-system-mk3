@@ -39,10 +39,19 @@ async def scrape_news(
     user: AuthUser = Depends(get_current_user),
 ):
     try:
-        articles = await svc.scrape(body.date, user.id)
+        articles, new_count = await svc.scrape(body.date, user.id)
     except ValueError as e:
         raise HTTPException(status_code=422, detail=str(e))
-    return [asdict(a) for a in articles]
+    return {"articles": [asdict(a) for a in articles], "new_count": new_count}
+
+
+@router.get("/dates")
+async def get_news_dates(
+    svc: NewsService = Depends(_get_svc),
+    user: AuthUser = Depends(get_current_user),
+):
+    """기사가 존재하는 날짜 목록 반환 (최신순)"""
+    return await svc.repo.find_all_dates(user.id)
 
 
 @router.get("")

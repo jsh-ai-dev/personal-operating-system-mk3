@@ -17,7 +17,7 @@ class ArticleRepository:
         if doc.get("analysis"):
             a = doc["analysis"]
             analysis = ArticleAnalysis(
-                highlighted_html=a.get("highlighted_html", ""),
+                summary=a.get("summary", ""),
                 keywords=a.get("keywords", []),
                 motivation_summary=a.get("motivation_summary", ""),
                 questions=a.get("questions", []),
@@ -60,6 +60,11 @@ class ArticleRepository:
             "companies": sorted(c for c in companies if c),
             "tags": sorted(t for t in tags if t),
         }
+
+    async def find_all_dates(self, owner_id: str) -> list[str]:
+        """기사가 존재하는 날짜 목록을 최신순으로 반환. 달력 하이라이팅용."""
+        dates = await self.col.distinct("date", {"owner_id": owner_id})
+        return sorted((d for d in dates if d), reverse=True)
 
     async def find_by_date(self, date: str, owner_id: str) -> list[Article]:
         docs = await self.col.find(

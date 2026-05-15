@@ -6,13 +6,9 @@ from dataclasses import dataclass, field
 
 @dataclass
 class ArticleAnalysis:
-    # 숫자 포함 문장은 <span class="num">, 키워드 문장은 <span class="kw"> 로 마킹된 HTML
-    highlighted_html: str
-    # 개발자 관점 핵심 키워드 3개 [{keyword, explanation}]
+    summary: str
     keywords: list
-    # 지원 동기에 활용할 기업 제품/기술/사업 특징 요약
     motivation_summary: str
-    # 현직자에게 물어볼 질문 2개 [{question, expected_answer}]
     questions: list
     analyzed_at: str
     analysis_model: str = ""
