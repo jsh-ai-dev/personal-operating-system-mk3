@@ -14,6 +14,7 @@ class ConversationRepository:
     def __init__(self, db: AsyncIOMotorDatabase):
         self.conversations = db["conversations"]
         self.messages = db["messages"]
+        self.import_history = db["import_history"]
 
     def _to_conversation(self, doc: dict) -> Conversation:
         def iso(v):
@@ -295,3 +296,20 @@ class ConversationRepository:
         })
         doc = await self.messages.find_one({"_id": result.inserted_id})
         return self._to_message(doc)
+
+    async def upsert_import_history(self, service: str, owner_id: str, imported_count: int) -> None:
+        """서비스별 마지막 임포트 시간 기록 — 모달에서 "마지막으로 N개 가져옴" 표시용"""
+        await self.import_history.update_one(
+            {"service": service, "owner_id": owner_id},
+            {"$set": {"last_imported_at": datetime.now(timezone.utc), "last_imported_count": imported_count}},
+            upsert=True,
+        )
+
+    async def get_import_history(self, owner_id: str) -> dict[str, dict]:
+        """서비스 → {last_imported_at, last_imported_count} 맵 반환"""
+        docs = await self.import_history.find({"owner_id": owner_id}).to_list(None)
+        def iso(v):
+            if isinstance(v, datetime):
+                return v.replace(tzinfo=timezone.utc).isoformat() if v.tzinfo is None else v.isoformat()
+            return v
+        return {doc["service"]: {"last_imported_at": iso(doc["last_imported_at"]), "last_imported_count": doc["last_imported_count"]} for doc in docs}

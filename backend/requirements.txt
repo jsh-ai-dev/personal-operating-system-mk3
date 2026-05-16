@@ -10,3 +10,5 @@ openai>=1.0.0
 google-genai>=1.0.0
 anthropic
 beautifulsoup4
+boto3
+python-multipart

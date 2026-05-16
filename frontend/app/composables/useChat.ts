@@ -87,6 +87,17 @@ export const useChat = () => {
   const importChatGptExport = () =>
     api<{ imported: number; skipped: number; total: number }>('/api/v1/import/chatgpt-export', { method: 'POST' })
 
+  const uploadImportFiles = async (service: string, files: File[]): Promise<{ uploaded: number }> => {
+    const formData = new FormData()
+    for (const file of files) formData.append('files', file)
+    // FormData는 $fetch가 Content-Type을 자동으로 multipart/form-data로 설정
+    return $fetch(`${config.public.apiBase}/api/v1/import/upload/${service}`, {
+      method: 'POST',
+      credentials: 'include',
+      body: formData,
+    })
+  }
+
   const setHidden = (id: string, isHidden: boolean) =>
     api(`/api/v1/chat/conversations/${id}`, { method: 'PATCH', body: { is_hidden: isHidden } })
 
@@ -211,5 +222,5 @@ export const useChat = () => {
       { method: 'POST', body: { model } },
     )
 
-  return { listConversations, getConversation, getMessages, getAllModels, chatOpenAI, chatGemini, chatClaude, summarizeConversation, generateQuiz, importJetbrainsCodex, importGeminiTakeout, importClaudeExport, importClaudeCode, importChatGptExport, setHidden, deleteConversation, setMessageHidden, updateMessageContent, deleteMessage }
+  return { listConversations, getConversation, getMessages, getAllModels, chatOpenAI, chatGemini, chatClaude, summarizeConversation, generateQuiz, importJetbrainsCodex, importGeminiTakeout, importClaudeExport, importClaudeCode, importChatGptExport, uploadImportFiles, setHidden, deleteConversation, setMessageHidden, updateMessageContent, deleteMessage }
 }

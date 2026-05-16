@@ -1,7 +1,7 @@
 <!-- [페이지] /chat — 전체 대화 목록 페이지. 각 항목 클릭 시 /chat/[id]로 이동 -->
 
 <script setup lang="ts">
-const { listConversations, setHidden, deleteConversation, importJetbrainsCodex, importGeminiTakeout, importClaudeExport, importClaudeCode, importChatGptExport } = useChat()
+const { listConversations, setHidden, deleteConversation, importJetbrainsCodex, importGeminiTakeout, importClaudeExport, importClaudeCode, importChatGptExport, uploadImportFiles } = useChat()
 
 // refresh는 runImport에서 참조하므로 먼저 선언
 const showHidden = ref(false)
@@ -18,6 +18,7 @@ const importingChatGpt = ref(false)
 const importResult = ref('')
 const importModalOpen = ref(false)
 const selectedImportKey = ref<'jetbrains-codex' | 'claude-export' | 'claude-code' | 'gemini-takeout' | 'chatgpt-export'>('jetbrains-codex')
+const selectedFiles = ref<File[]>([])
 
 const importOptions = [
   { label: 'ChatGPT', key: 'chatgpt-export', enabled: true },
@@ -29,6 +30,23 @@ const importOptions = [
   { label: 'Copilot', key: 'copilot', enabled: false },
   { label: 'Cursor', key: 'cursor', enabled: false },
 ] as const
+
+// 서비스별 파일 선택 설정
+const fileInputConfig = computed(() => {
+  const configs: Record<string, { accept: string; multiple: boolean; hint: string }> = {
+    'chatgpt-export': { accept: '.json', multiple: false, hint: 'conversations.json' },
+    'claude-export':  { accept: '.json', multiple: false, hint: 'conversations.json' },
+    'gemini-takeout': { accept: '.json', multiple: false, hint: '내활동.json' },
+    'claude-code':    { accept: '.jsonl', multiple: true, hint: '*.jsonl 파일들' },
+    'jetbrains-codex': { accept: '.events', multiple: true, hint: '*.events 파일들' },
+  }
+  return configs[selectedImportKey.value] ?? null
+})
+
+const onFileChange = (e: Event) => {
+  const input = e.target as HTMLInputElement
+  selectedFiles.value = input.files ? Array.from(input.files) : []
+}
 
 type FilterKey =
   | 'openai'
@@ -104,13 +122,30 @@ const runImportClaude = () => _runImport(importClaudeExport, v => { importingCla
 const runImportClaudeCode = () => _runImport(importClaudeCode, v => { importingClaudeCode.value = v })
 const runImportChatGpt = () => _runImport(importChatGptExport, v => { importingChatGpt.value = v })
 
+const isImporting = computed(() => importingCodex.value || importingGemini.value || importingClaude.value || importingClaudeCode.value || importingChatGpt.value)
+
 const runImportByKey = async () => {
+  // 파일이 선택돼 있으면 S3 업로드 먼저
+  if (selectedFiles.value.length > 0) {
+    try {
+      await uploadImportFiles(selectedImportKey.value, selectedFiles.value)
+    } catch {
+      importResult.value = '업로드 실패'
+      setTimeout(() => { importResult.value = '' }, 3000)
+      importModalOpen.value = false
+      selectedFiles.value = []
+      return
+    }
+  }
+
+  importModalOpen.value = false
+  selectedFiles.value = []
+
   if (selectedImportKey.value === 'jetbrains-codex') await runImportCodex()
   if (selectedImportKey.value === 'claude-export') await runImportClaude()
   if (selectedImportKey.value === 'claude-code') await runImportClaudeCode()
   if (selectedImportKey.value === 'gemini-takeout') await runImportGemini()
   if (selectedImportKey.value === 'chatgpt-export') await runImportChatGpt()
-  importModalOpen.value = false
 }
 
 const toggleShowHidden = async () => {
@@ -216,7 +251,7 @@ const filteredConversations = computed(() => {
         <button class="btn-toggle-hidden" :class="{ active: showHidden }" @click="toggleShowHidden">
           {{ showHidden ? '완료' : '숨김 관리' }}
         </button>
-        <button class="btn-import" :disabled="importingCodex || importingGemini || importingClaude || importingClaudeCode || importingChatGpt" @click="importModalOpen = true">
+        <button class="btn-import" :disabled="isImporting" @click="importModalOpen = true">
           내역 가져오기
         </button>
         <span v-if="importResult" class="import-result">{{ importResult }}</span>
@@ -225,16 +260,30 @@ const filteredConversations = computed(() => {
     </header>
     <div v-if="importModalOpen" class="modal-overlay">
       <div class="modal">
-        <p class="modal-title">가져올 서비스 선택</p>
-        <select v-model="selectedImportKey" class="modal-select" :disabled="importingCodex || importingGemini || importingClaude || importingClaudeCode || importingChatGpt">
+        <p class="modal-title">내역 가져오기</p>
+        <select v-model="selectedImportKey" class="modal-select" :disabled="isImporting" @change="selectedFiles = []">
           <option v-for="opt in importOptions" :key="opt.key" :value="opt.key" :disabled="!opt.enabled">
             {{ opt.label }} {{ opt.enabled ? '' : '(준비 중...)' }}
           </option>
         </select>
+        <div v-if="fileInputConfig" class="file-input-wrap">
+          <label class="file-label">
+            <span class="file-hint">{{ fileInputConfig.hint }}</span>
+            <input
+              class="file-input"
+              type="file"
+              :accept="fileInputConfig.accept"
+              :multiple="fileInputConfig.multiple"
+              :disabled="isImporting"
+              @change="onFileChange"
+            >
+          </label>
+          <span v-if="selectedFiles.length > 0" class="file-count">{{ selectedFiles.length }}개 선택됨</span>
+        </div>
         <div class="modal-actions">
-          <button class="btn-import" @click="importModalOpen = false">취소</button>
-          <button class="btn-import" :disabled="importingCodex || importingGemini || importingClaude || importingClaudeCode || importingChatGpt || !importOptions.find(v => v.key === selectedImportKey)?.enabled" @click="runImportByKey">
-            가져오기
+          <button class="btn-import" @click="importModalOpen = false; selectedFiles = []">취소</button>
+          <button class="btn-import" :disabled="isImporting || !importOptions.find(v => v.key === selectedImportKey)?.enabled" @click="runImportByKey">
+            {{ selectedFiles.length > 0 ? '업로드 & 가져오기' : '가져오기' }}
           </button>
         </div>
       </div>
@@ -377,6 +426,11 @@ h1 { font-size: 1.3rem; margin: 0; }
 }
 .modal-hint { margin: 8px 0 0; font-size: 0.76rem; color: #9ca3af; }
 .modal-actions { margin-top: 10px; display: flex; justify-content: flex-end; gap: 8px; }
+.file-input-wrap { margin-top: 8px; display: flex; align-items: center; gap: 8px; }
+.file-label { display: flex; flex-direction: column; gap: 4px; flex: 1; }
+.file-hint { font-size: 0.72rem; color: #9ca3af; }
+.file-input { font-family: monospace; font-size: 0.78rem; width: 100%; }
+.file-count { font-size: 0.75rem; color: #059669; white-space: nowrap; }
 .filter-row {
   display: flex;
   flex-wrap: wrap;
