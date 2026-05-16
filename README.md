@@ -1,346 +1,291 @@
 # Personal Operating System mk3
 
-**여러 AI 서비스의 대화를 한 곳에 수집·저장하고, 요약·퀴즈화하는 AI 통합 플랫폼입니다.**
+Python/FastAPI 기반의 AI 통합 백엔드로, 여러 LLM(ChatGPT·Claude·Gemini)을 한 곳에서 호출·저장·검색·학습 도구화하는 서비스입니다.
 
-[mk1 (Kotlin/Spring Boot)](https://github.com/jsh-ai-dev/personal-operating-system-mk1) ·
-[mk2 (TypeScript/Next.js · NestJS)](https://github.com/jsh-ai-dev/personal-operating-system-mk2)
-와 함께 3서비스 MSA 플랫폼을 구성합니다.
+`mk3`은 Personal Operating System 시리즈에서 AI 도메인을 담당하며, `mk2`의 인증/BFF를 거쳐 `mk1` 노트 서비스와 함께 동일한 사용자 세션으로 묶여 동작합니다.
 
----
+시리즈 저장소:
 
-## 개요
+- [mk1 - Spring Boot 노트/검색/파일/AI 요약](https://github.com/jsh-ai-dev/personal-operating-system-mk1)
+- [mk2 - Next.js/NestJS 통합 웹, 인증, 일정](https://github.com/jsh-ai-dev/personal-operating-system-mk2)
+- [mk3 - 본 저장소, FastAPI AI 대화 저장, 임포트, 검색](https://github.com/jsh-ai-dev/personal-operating-system-mk3)
 
-OpenAI(ChatGPT), Google Gemini, Anthropic Claude에 직접 API를 호출하고, 대화 기록을 MongoDB에 저장합니다.
-저장된 대화는 AI로 요약하거나 4지선다 퀴즈로 변환해 학습 자료로 활용할 수 있습니다.
+## 한눈에 보기
 
-구독형 서비스에서 이미 나눈 대화(JetBrains Codex, Claude, Gemini Takeout)도 파일 임포트로 한 곳에 가져올 수 있습니다.
+| 구분 | 내용 |
+|---|---|
+| 목적 | 여러 AI 서비스의 대화·구독·사용량을 통합 관리하고, 저장된 대화를 학습 자료로 가공 |
+| 핵심 기능 | 멀티 LLM 채팅(SSE), 대화 임포트, Qdrant 의미 검색, AI 요약/퀴즈, 사용량 스크래퍼, 신문 분석 |
+| 설계 | Clean Architecture (domain / application / adapter / api) — 도메인은 프레임워크 의존 없음 |
+| 인증 | mk2 auth-service `/api/auth/me`에 토큰 검증을 위임, owner_id 기반 데이터 격리 |
+| 운영 요소 | Docker Compose, Kubernetes base/AWS overlay, ECR + OIDC 빌드, k3s self-hosted runner 무중단 배포, S3 임포트 |
 
----
+## 시스템 구조
+
+```text
+[Browser]
+    │
+    ▼
+[mk2 Next.js BFF :3000]                       ─ 인증 쿠키 관리, JWT 프록시
+    └─ /api/mk3/* ───────────────►  [mk3 FastAPI :8001]  ◀ 이 프로젝트
+                                          │
+                       ┌──────────────────┼──────────────────┐
+                       ▼                  ▼                  ▼
+                   MongoDB             Qdrant            External
+                   (대화/메시지/        (대화 임베딩       ├─ OpenAI / Anthropic / Google API
+                    뉴스/AI 서비스)      코사인 유사도)     ├─ mk2 auth-service (/api/auth/me)
+                                                          ├─ Chrome CDP (사용량 스크래퍼)
+                                                          └─ AWS S3 (임포트 파일 저장)
+```
+
+mk3에는 Nuxt 3 기반의 `mk3-web`도 포함되어 있지만, 실사용 메인 프론트는 mk2(React/Next.js)입니다. `mk3-web`은 Vue/Nuxt 학습과 기능 실험용 보조 UI로 유지합니다.
+
+## 구현 기능
+
+### 1. 멀티 LLM 채팅 (SSE 스트리밍)
+
+OpenAI·Anthropic·Google API를 직접 호출하고 응답을 Server-Sent Events로 실시간 스트리밍합니다. 응답 완료 시 토큰 수와 비용을 메시지·대화 단위로 MongoDB에 누적 저장합니다.
+
+- 3개 provider 모두 같은 `chat_<provider>_stream` 비동기 제너레이터 인터페이스로 통일
+- provider별 role 매핑 차이 흡수 (Gemini는 `assistant`→`model`, Anthropic은 OpenAI와 동일)
+- 마지막 청크의 `usage` 메타데이터로 input/output 토큰 추출 → 단가 테이블과 곱해 USD 비용 계산
+- Gemini 무료 티어는 비용 대신 RPM/RPD/TPM rate limit으로 관리
+
+```python
+OPENAI_PRICING = {
+    "gpt-5-nano": {"input": 0.05,  "output": 0.40},
+    "gpt-5-mini": {"input": 0.25,  "output": 2.00},
+    "gpt-5":      {"input": 1.25,  "output": 10.00},
+}
+CLAUDE_PRICING = {
+    "claude-haiku-4-5":  {"input": 1.00, "output": 5.00},
+    "claude-sonnet-4-6": {"input": 3.00, "output": 15.00},
+    "claude-opus-4-7":   {"input": 5.00, "output": 25.00},
+}
+```
+
+### 2. 대화 임포트 (5종 소스)
+
+| 소스 | 포맷 | 파싱 특이사항 |
+|---|---|---|
+| ChatGPT export | `conversations.json` | 메시지 트리에서 활성 분기만 추출, citation 마커(U+E200~E201) 제거 |
+| Claude.ai export | `conversations.json` | 사용자/어시스턴트 메시지 분리, 원본 `created_at` 보존 |
+| Claude Code | `.jsonl` 트랜스크립트 | 라인별 JSON 파싱, 세션 ID = 파일명 |
+| JetBrains Codex | `.events` 파일 | `AUI_EVENTS_V1\|base64(JSON)`, JSON 내부 이벤트도 다시 base64 — 이중 인코딩 |
+| Google Takeout | `내활동.json` | 시간 인접한 Q/A를 KST 기준으로 그룹핑해 대화 단위 복원 |
+
+- `source_id` 기반 중복 검사 — 같은 세션을 두 번 임포트해도 멱등 동작
+- 임포트 직후 `SearchService`로 자동 임베딩 → 즉시 의미 검색 가능
+- 파일은 로컬 `data/` 또는 S3 둘 다 지원, `S3_BUCKET` 설정 여부로 자동 분기
+
+### 3. Qdrant 의미 검색
+
+OpenAI `text-embedding-3-small`(1536차원)로 대화를 임베딩하고 Qdrant에 코사인 거리로 저장합니다.
+
+- 요약이 있는 대화는 `title + summary`를, 없으면 메시지 원문을 문자 예산(3,000자) 내에서 이어 붙여 임베딩
+- 임베딩 후 MongoDB에 `qdrant_id` 저장 → 전체 재인덱싱 시 이미 인덱싱된 대화는 건너뜀
+- 검색 시 `owner_id` 필터로 다른 사용자 대화가 결과에 섞이지 않도록 격리
+- Qdrant payload에 없는 필드(provider, summary 여부, 비용)는 MongoDB에서 `find_conversations_by_ids`로 한 번에 N+1 없이 보강
+- 요약 생성 직후 기존 임베딩을 새 요약 기준으로 자동 교체
+
+### 4. AI 요약 / 퀴즈 (학습 도구)
+
+저장된 대화를 OpenAI 모델로 요약하고, 요약을 기반으로 4지선다 퀴즈를 생성합니다. "처음 배우는 기술을 나중에 다시 확인할 때 도움이 되는 형태"가 목표로, 프롬프트도 그 관점에서 설계했습니다.
+
+- 요약: WHY/WHEN 중심의 개념 정리. 단순 코드 변환·반복 작업은 제외
+- 퀴즈: 동작 원리·옵션·헷갈리는 지점 우선. 코드 생성 결과물은 제외
+- AI가 자주 붙이는 `"A. 보기"`, `"①"` 접두사를 정규식으로 후처리해 깔끔한 보기로 정규화
+- 숨김 처리한 메시지는 요약/퀴즈 입력에서도 제외
+
+### 5. AI 서비스 사용량 스크래퍼 (5종)
+
+ChatGPT/Claude/Codex/Gemini/Cursor의 구독 플랜·결제일·세션 사용량을 자동으로 읽어와 DB의 AI 서비스 레코드에 반영합니다.
+
+Claude.ai의 Cloudflare 봇 탐지를 우회하기 위해 일반 headless Playwright 대신 **CDP(Chrome DevTools Protocol)** 로 사용자 Chrome 세션을 재사용합니다.
+
+- `--remote-debugging-port=9222`로 띄운 실제 Chrome에 Playwright가 attach
+- Chrome 창은 Windows API(`SetWindowPos -32000,-32000` + `WS_EX_TOOLWINDOW`)로 화면 밖으로 이동 — `SW_HIDE`는 렌더러를 절전 모드로 빠뜨려 페이지 inner_text 호출이 타임아웃 나기 때문
+- usage 페이지만 `wait_until='networkidle'` 사용 — SPA가 페이지 로드 후 별도 API로 사용량 데이터를 가져오는 구조
+- 첫 실행 ~5초 비용 절감을 위해 page만 close하고 Chrome 프로세스는 유지
+- 5개 서비스가 같은 Chrome 인스턴스를 공유하므로 대시보드 새로고침은 순차 실행
+
+### 6. AI 신문 스크랩 + 분석
+
+네이버 뉴스 신문지면(1~5면)을 날짜별로 수집하고, 면접 준비용으로 GPT가 핵심 기업·태그·요약·예상 질문을 추출합니다.
+
+- 스크랩은 `requests + BeautifulSoup` (네이버 SSR이라 Playwright 불필요)
+- 분석은 사용자가 모델(`gpt-5-nano`/`mini`/`5`)을 선택해 트리거 — 토큰 한도 초과 시 명시적 RuntimeError로 잘림 방지
+- 기업/태그 자동 추출 결과를 별도 필드로 분리해 전체 기간 필터 조회 가능
+
+### 7. 인증과 데이터 격리
+
+- 모든 라우터에 `Depends(get_current_user)` 주입
+- `Authorization: Bearer <JWT>` 우선, 없으면 `pos_session` 쿠키 fallback — mk2 BFF 경유 호출과 직접 호출을 동시 지원
+- 토큰 검증은 mk2 auth-service `/api/auth/me`에 위임 (단일 인증 서버 원칙)
+- 모든 MongoDB/Qdrant 쿼리에 `owner_id` 조건 필수 — 다른 사용자 데이터 누출 방지
+
+## 저장소 구조
+
+```text
+personal-operating-system-mk3/
+├─ backend/app/
+│  ├─ domain/                      # Conversation, Message, Article, AIService (프레임워크 의존 X)
+│  ├─ application/
+│  │  ├─ chat_service.py           # SSE 스트리밍, 비용 계산, 요약/퀴즈 생성
+│  │  ├─ import_service.py         # 5종 임포트 오케스트레이션, S3 fallback
+│  │  ├─ search_service.py         # 임베딩 + Qdrant 검색
+│  │  ├─ news_service.py           # 신문 스크랩 + AI 분석
+│  │  └─ ai_service_service.py     # AI 서비스 CRUD
+│  ├─ adapter/
+│  │  ├─ mongodb/                  # ConversationRepository, ArticleRepository 등
+│  │  ├─ qdrant/                   # VectorRepository (1536차원 코사인)
+│  │  ├─ importer/                 # chatgpt/claude/claude_code/codex/gemini 파서
+│  │  └─ scraper/                  # CDP 기반 5종 + 네이버 뉴스 스크래퍼
+│  ├─ api/v1/                      # health/chat/import/search/news/ai-services/scraper
+│  └─ core/                        # config, auth, dependencies, s3
+│
+├─ frontend/app/                   # Nuxt 3 보조 UI
+│  ├─ pages/                       # 대시보드 / chat / summaries / search / news / quiz
+│  ├─ composables/                 # useChat, useSearch, useAiServices, useNews, useApi
+│  └─ components/
+│
+├─ k8s/
+│  ├─ base/                        # Namespace, ConfigMap, Secret, MongoDB, Qdrant, API, Web, Ingress
+│  └─ overlays/aws/                # 외부 MongoDB/Qdrant, ECR 이미지 매핑, AWS 도메인 패치
+│
+├─ .github/workflows/ecr-push.yml  # ECR matrix 빌드 → self-hosted runner에서 k3s rollout restart
+├─ compose.yaml                    # api + web + mongodb + qdrant (로컬 학습용)
+├─ compose.data-box.yaml           # MongoDB + Qdrant만 분리 운영 (AWS data-box)
+├─ Dockerfile.api / Dockerfile.web
+└─ dev.ps1                         # 로컬 일괄 기동 스크립트
+```
+
+## API 요약
+
+### 채팅
+
+| Method | Endpoint | 설명 |
+|---|---|---|
+| `POST` | `/api/v1/chat/openai` | ChatGPT 채팅 (SSE) |
+| `POST` | `/api/v1/chat/gemini` | Gemini 채팅 (SSE) |
+| `POST` | `/api/v1/chat/claude` | Claude 채팅 (SSE) |
+| `GET`  | `/api/v1/chat/{provider}/models` | provider별 모델 목록과 단가/제한 |
+| `GET`  | `/api/v1/chat/conversations` | 대화 목록 (`include_hidden` 옵션) |
+| `GET`  | `/api/v1/chat/conversations/{id}` | 대화 상세 |
+| `GET`  | `/api/v1/chat/conversations/{id}/messages` | 메시지 목록 |
+| `PATCH`/`DELETE` | `/api/v1/chat/conversations/{id}` | 숨김 토글, 삭제 |
+| `PATCH`/`DELETE` | `/api/v1/chat/messages/{id}` | 메시지 수정·숨김·삭제 |
+| `POST`/`DELETE` | `/api/v1/chat/conversations/{id}/summary` | AI 요약 생성/삭제 |
+| `POST`/`DELETE` | `/api/v1/chat/conversations/{id}/quiz` | AI 퀴즈 생성/삭제 |
+
+### 임포트 / 검색 / 뉴스 / 사용량
+
+| Method | Endpoint | 설명 |
+|---|---|---|
+| `POST` | `/api/v1/import/{chatgpt-export\|claude-export\|claude-code\|jetbrains-codex\|gemini-takeout}` | 소스별 임포트 트리거 |
+| `POST` | `/api/v1/import/upload/{service}` | S3로 임포트 파일 업로드 |
+| `GET`  | `/api/v1/import/history` | 서비스별 마지막 임포트 시각/건수 |
+| `GET`  | `/api/v1/search?q=...` | Qdrant 의미 검색 |
+| `POST` | `/api/v1/search/index` | 전체 대화 재인덱싱 |
+| `GET`/`POST` | `/api/v1/news`, `/api/v1/news/scrape` | 신문 기사 조회·날짜별 스크랩 |
+| `POST` | `/api/v1/news/{id}/analyze` | 기사 AI 분석 (모델 선택) |
+| `POST` | `/api/v1/scraper/{claude\|chatgpt\|codex\|gemini\|cursor}` | AI 서비스 사용량 스크래핑 |
+| `GET`/`POST`/`PUT`/`DELETE` | `/api/v1/ai-services` | AI 구독 서비스 CRUD |
 
 ## 기술 스택
 
 | 영역 | 기술 |
 |---|---|
-| Backend | Python 3.11, FastAPI 0.136, Motor 3.7 (비동기 MongoDB 드라이버) |
-| Frontend | TypeScript, Nuxt 3, Vue 3 |
-| Database | MongoDB 7 |
-| Vector Store | Qdrant 1.14 |
-| LLM | OpenAI API, Google Gemini API, Anthropic Claude API |
-| Auth | JWT (mk2 auth-service 연동) |
-| Infra | Docker, Docker Compose, Kubernetes |
-
----
-
-## 시스템 아키텍처
-
-### MSA 전체 구성
-
-```
-브라우저
-  │
-  ▼
-mk2 · Next.js (BFF, :3000, 메인 프론트)
-  ├─ /api/auth/*    ──▶  auth-service (:3002)   JWT 발급·검증·로그아웃
-  ├─ /api/backend/* ──▶  NestJS (:3001)          달력·목표 API
-  ├─ /api/notes/*   ──▶  mk1 Spring (:8080)      노트·파일·검색 API
-  └─ /api/mk3/*     ──▶  mk3-api FastAPI (:8001) AI 채팅·임포트 API  ◀ 이 프로젝트
-                             │
-                      ┌──────┴──────┐
-                      MongoDB       Qdrant
-```
-
-mk3에는 Nuxt 기반 `mk3-web`도 있지만, 실사용 메인 프론트는 mk2(React)입니다.  
-`mk3-web`은 Vue/Nuxt 학습 및 기능 실험용 보조 UI로 유지합니다.
-
-### mk3 내부 구조 (Clean Architecture)
-
-```
-api/v1 (라우터)
-    │  HTTP 요청·응답만 담당
-    ▼
-application (서비스)
-    │  비즈니스 로직, LLM 호출, 비용 계산
-    ▼
-adapter (어댑터)
-    ├─ mongodb/    MongoDB 저장소 구현체
-    ├─ importer/   파일 파싱 로직
-    └─ scraper/    웹 스크래핑 로직
-    ▼
-domain (도메인 모델)
-    Conversation, Message — 순수 Python 객체, 프레임워크 의존 없음
-```
-
-인증은 FastAPI 의존성 주입으로 처리합니다. 모든 엔드포인트에서 `get_current_user`를 주입하면 mk2 auth-service에 토큰 검증 요청을 보내고, 검증된 `user_id`를 반환합니다.
-
----
-
-## 주요 기능
-
-### 1. 멀티 LLM 채팅 (SSE 스트리밍)
-
-OpenAI · Gemini · Claude API를 직접 호출합니다. 응답은 SSE(Server-Sent Events)로 실시간 스트리밍하고, 토큰 수와 비용을 메시지·대화 단위로 MongoDB에 저장합니다.
-
-```
-POST /api/v1/chat/openai   → ChatGPT 스트리밍
-POST /api/v1/chat/gemini   → Gemini 스트리밍
-POST /api/v1/chat/claude   → Claude 스트리밍
-```
-
-**비용 추적** — 모델별 단가(USD/1M 토큰)를 상수로 관리하고, 응답 완료 시 토큰 수로 비용을 계산해 저장합니다. Gemini 무료 티어는 RPM·RPD 제한도 별도 관리합니다.
-
-```python
-OPENAI_PRICING = {
-    "gpt-5-mini":  {"input": 0.25,  "output": 2.00},
-    "gpt-5":       {"input": 1.25,  "output": 10.00},
-    "gpt-5.4":     {"input": 2.50,  "output": 15.00},
-}
-CLAUDE_PRICING = {
-    "claude-haiku-4-5":  {"input": 1.00,  "output": 5.00},
-    "claude-sonnet-4-6": {"input": 3.00,  "output": 15.00},
-    "claude-opus-4-7":   {"input": 5.00,  "output": 25.00},
-}
-```
-
-### 2. 대화 임포트 (4종)
-
-| 버튼 | 소스 | 방식 |
-|---|---|---|
-| Codex 가져오기 | JetBrains AI Assistant | `.events` 파일 파싱 (base64 인코딩 JSON) |
-| Claude Code 가져오기 | Claude Code 로컬 트랜스크립트 | `.jsonl` 파일 파싱 |
-| Claude 가져오기 | Claude.ai 데이터 내보내기 | `conversations.json` 파싱 |
-| Gemini 가져오기 | Google Takeout | `내활동.json` 파싱 (날짜별 그룹핑) |
-
-`source_id` 기반 중복 검사로 같은 대화를 두 번 임포트해도 안전합니다.
-
-**JetBrains Codex `.events` 파싱 — base64 이중 인코딩 구조**
-
-```
-[파일명: xxxxxx.events]
-AUI_EVENTS_V1|base64(JSON) 형식
-  └─ JSON 배열 내 각 이벤트도 base64 인코딩
-       └─ ChatSessionUserPromptEvent  : 사용자 메시지
-          MarkdownBlockUpdatedEvent   : 어시스턴트 응답 (점진적 업데이트 → 마지막만 사용)
-```
-
-### 3. AI 대화 요약
-
-저장된 대화를 OpenAI API로 요약합니다. 요약 결과와 사용된 모델·비용을 대화 도큐먼트에 함께 저장합니다.
-
-```
-POST /api/v1/chat/conversations/{id}/summary
-```
-
-`/summaries` 페이지에서 요약된 대화를 카드 형태로 모아볼 수 있습니다. 응답에 포함된 마크다운은 외부 라이브러리 없이 정규식으로 변환해 렌더링합니다.
-
-### 4. AI 퀴즈 생성
-
-대화 요약을 기반으로 4지선다 퀴즈를 생성합니다. 퀴즈 프롬프트는 "처음 배우는 기술 맥락"을 고려해 코드 생성보다 동작 원리·설계 의도 중심의 문제를 생성하도록 설계했습니다.
-
-```
-POST /api/v1/chat/conversations/{id}/quiz
-```
-
-`/quiz/[id]` 페이지에서 1문제씩 풀고, 선택 즉시 정답과 해설을 확인합니다. "정답 보기" 버튼으로 선택 없이 건너뛸 수도 있습니다.
-
-### 5. 소스 타입 자동 분류
-
-임포트된 대화는 `model` 값으로 소스를 자동 분류합니다.
-
-| model 값 | 소스 | 타입 |
-|---|---|---|
-| `codex` | JetBrains AI Assistant | 코딩 |
-| `claude-code` | Claude Code | 코딩 |
-| `claude` | Claude.ai 내보내기 | 채팅 임포트 |
-| `gemini` | Google Takeout | 채팅 임포트 |
-| 구체적 모델명 (`gpt-5-mini` 등) | API 직접 호출 | API |
-
----
-
-## API 엔드포인트
-
-### 채팅
-
-| 메서드 | 경로 | 설명 |
-|---|---|---|
-| `GET` | `/api/v1/chat/conversations` | 대화 목록 (필터·날짜 범위) |
-| `POST` | `/api/v1/chat/openai` | ChatGPT 채팅 (SSE 스트리밍) |
-| `POST` | `/api/v1/chat/gemini` | Gemini 채팅 (SSE 스트리밍) |
-| `POST` | `/api/v1/chat/claude` | Claude 채팅 (SSE 스트리밍) |
-| `GET` | `/api/v1/chat/conversations/{id}` | 대화 상세 |
-| `GET` | `/api/v1/chat/conversations/{id}/messages` | 메시지 목록 |
-| `PATCH` | `/api/v1/chat/conversations/{id}` | 대화 숨김 처리 |
-| `PATCH` | `/api/v1/chat/messages/{id}` | 메시지 수정·숨김 처리 |
-| `DELETE` | `/api/v1/chat/conversations/{id}` | 대화 삭제 |
-| `DELETE` | `/api/v1/chat/messages/{id}` | 메시지 삭제 |
-| `POST` | `/api/v1/chat/conversations/{id}/summary` | AI 요약 생성 |
-| `POST` | `/api/v1/chat/conversations/{id}/quiz` | AI 퀴즈 생성 |
-
-### 임포트
-
-| 메서드 | 경로 | 설명 |
-|---|---|---|
-| `POST` | `/api/v1/import/jetbrains-codex` | JetBrains Codex `.events` 임포트 |
-| `POST` | `/api/v1/import/claude-code` | Claude Code 트랜스크립트 임포트 |
-| `POST` | `/api/v1/import/claude-export` | Claude 데이터 내보내기 임포트 |
-| `POST` | `/api/v1/import/gemini-takeout` | Google Takeout 임포트 |
-
-### 기타
-
-| 메서드 | 경로 | 설명 |
-|---|---|---|
-| `GET` | `/api/v1/health` | 헬스 체크 |
-| `GET/POST/PUT/DELETE` | `/api/v1/ai-services` | AI 서비스 설정 관리 |
-
----
-
-## 도메인 모델
-
-### Conversation
-
-```python
-@dataclass
-class Conversation:
-    id: str
-    owner_id: str                    # 사용자 ID (JWT subject)
-    provider: str                    # "openai" | "anthropic" | "google"
-    model: str                       # "gpt-5-mini", "claude-sonnet-4-6" 등
-    title: str
-    message_count: int
-    total_tokens_input: int
-    total_tokens_output: int
-    total_cost_usd: float
-    summary: str | None              # AI 요약 결과
-    quiz: list | None                # [{"question", "options", "answer", "explanation"}]
-    source_id: str | None            # 임포트 출처 (중복 방지)
-    is_hidden: bool = False
-```
-
-### Message
-
-```python
-@dataclass
-class Message:
-    id: str
-    conversation_id: str
-    role: str                        # "user" | "assistant"
-    content: str
-    model: str | None
-    tokens_input: int | None
-    tokens_output: int | None
-    cost_usd: float | None
-    is_hidden: bool = False
-```
-
----
-
-## 프로젝트 구조
-
-```
-personal-operating-system-mk3/
-├─ backend/
-│  └─ app/
-│     ├─ domain/             # 도메인 모델 (프레임워크 의존 없음)
-│     ├─ application/        # 비즈니스 로직
-│     │  ├─ chat_service.py     LLM 호출·스트리밍·비용 계산
-│     │  └─ import_service.py   파일 임포트 오케스트레이션
-│     ├─ adapter/
-│     │  ├─ mongodb/            MongoDB 저장소 구현체
-│     │  ├─ importer/           각 서비스별 파일 파서
-│     │  └─ scraper/            CDP 기반 웹 스크래퍼
-│     ├─ api/v1/             # FastAPI 라우터
-│     └─ core/               # 설정, JWT 검증, 의존성 주입
-│
-├─ frontend/
-│  └─ app/
-│     ├─ pages/
-│     │  ├─ chat/               대화 목록·상세
-│     │  ├─ summaries/          요약 모음
-│     │  └─ quiz/               퀴즈 목록·풀기
-│     ├─ composables/           API 호출·상태 관리
-│     └─ components/            재사용 UI 컴포넌트
-│
-├─ k8s/
-│  ├─ base/                  Kubernetes 기본 배포
-│  └─ overlays/aws/          AWS 환경 오버레이 (외부 DB 연결)
-│
-├─ compose.yaml              mk3-api + mk3-web + MongoDB + Qdrant
-├─ Dockerfile.api            FastAPI 이미지 빌드
-└─ Dockerfile.web            Nuxt 웹 이미지 빌드
-```
-
----
+| Language | Python 3.11 |
+| Backend | FastAPI 0.136, Pydantic v2, uvicorn |
+| Persistence | MongoDB 7 (Motor 3.7 비동기 드라이버), Qdrant 1.14 (`AsyncQdrantClient`) |
+| LLM SDK | `openai`, `anthropic`, `google-genai` |
+| Scraping | Playwright (CDP), BeautifulSoup, requests |
+| Auth | mk2 auth-service JWT 위임 검증, `pos_session` 쿠키 fallback |
+| Storage | AWS S3 (boto3, `run_in_executor`로 비동기화) |
+| Frontend | TypeScript, Nuxt 3 (Vue 3) |
+| Infra | Docker Compose, Kubernetes, Kustomize, GitHub Actions OIDC, AWS ECR, k3s |
 
 ## 로컬 실행
 
-### 사전 요구사항
+### 1. 환경 파일 준비
 
-- Docker Desktop
-- Python 3.11+
-- Node.js 20+
-
-### Docker로 전체 실행 (api + web + DB)
-
-```bash
-docker compose up -d
+```powershell
+Copy-Item backend\.env.example backend\.env
 ```
 
-- mk3-api(FastAPI): `http://localhost:8001`
-- mk3-web(Nuxt): `http://localhost:3003`
+주요 환경변수:
 
-### 백엔드 실행
+```text
+MONGODB_URL=mongodb://pos:pos@localhost:27017
+MONGODB_DB=pos_mk3
+QDRANT_HOST=localhost
+QDRANT_PORT=6333
 
-```bash
+OPENAI_API_KEY=
+ANTHROPIC_API_KEY=
+GEMINI_API_KEY=
+
+AUTH_SERVICE_URL=http://127.0.0.1:3002    # mk2 auth-service
+S3_BUCKET=                                # 비워두면 로컬 data/ 사용
+```
+
+### 2. Docker Compose로 전체 기동
+
+```powershell
+docker compose up -d --build
+```
+
+- mk3-api (FastAPI): `http://localhost:8001`
+- mk3-web (Nuxt 3): `http://localhost:3003`
+- MongoDB: `localhost:27017`
+- Qdrant: HTTP `localhost:6333`, gRPC `localhost:6334`
+
+### 3. 백엔드만 로컬 실행
+
+```powershell
 cd backend
 python -m venv .venv
-source .venv/bin/activate   # Windows: .venv\Scripts\activate
+.\.venv\Scripts\Activate.ps1
 pip install -r requirements.txt
-
-cp .env.example .env        # 최초 1회, API 키 설정 필요
 uvicorn app.main:app --reload --port 8001
 ```
 
-### 프론트엔드 실행
+### 4. 프론트엔드만 로컬 실행
 
-```bash
+```powershell
 cd frontend
 npm install
 npm run dev
 ```
 
-### 환경변수 주요 항목
+### 5. 일괄 기동
 
-| 변수 | 설명 |
-|---|---|
-| `MONGODB_URL` | MongoDB 접속 URL |
-| `QDRANT_HOST` / `QDRANT_PORT` | Qdrant 접속 정보 |
-| `AUTH_SERVICE_URL` | mk2 auth-service URL (JWT 검증용) |
-| `OPENAI_API_KEY` | OpenAI API 키 |
-| `GEMINI_API_KEY` | Google Gemini API 키 |
-| `ANTHROPIC_API_KEY` | Anthropic Claude API 키 |
-
-### 실행 포트
-
-| 서비스 | 포트 |
-|---|---|
-| mk3-api (FastAPI) | 8001 |
-| mk3-web (Nuxt 3) | 3003 |
-| MongoDB | 27017 |
-| Qdrant HTTP | 6333 |
-| Qdrant gRPC | 6334 |
-
----
-
-## Kubernetes 배포
-
-```
-k8s/base/          FastAPI + MongoDB + Qdrant (기본 구성)
-k8s/overlays/aws/  외부 MongoDB·Qdrant 사용 시 패치 (AWS 환경)
+```powershell
+.\dev.ps1
 ```
 
-```bash
-# 로컬 클러스터
-kubectl apply -k k8s/base
+`dev.ps1`은 인프라(MongoDB/Qdrant)를 Docker Compose로 올리고 readiness를 확인한 뒤 백엔드/프론트를 함께 실행합니다.
 
-# AWS
-kubectl apply -k k8s/overlays/aws
-```
+## 배포와 운영 구성
+
+- **`Dockerfile.api`** / **`Dockerfile.web`**: 멀티 스테이지 빌드, FastAPI(uvicorn)와 Nuxt(node) 분리 이미지
+- **`compose.yaml`**: api + web + MongoDB + Qdrant 단일 로컬 스택
+- **`compose.data-box.yaml`**: 운영 환경에서 MongoDB/Qdrant만 별도 EC2(data-box)로 분리해 띄울 때 사용. 비밀번호 필수 환경변수(`:?`) 강제
+- **`k8s/base`**: Namespace, ConfigMap, Secret, MongoDB, Qdrant, API, Web, Ingress
+- **`k8s/overlays/aws`**: 외부 MongoDB/Qdrant 연결 전제, ECR 이미지 매핑, AWS 도메인용 ingress 패치
+- **`.github/workflows/ecr-push.yml`**: OIDC(`AWS_ROLE_TO_ASSUME`)로 AWS 자격 증명 발급 → matrix로 api/web 동시 빌드 → ECR push → self-hosted runner에서 `kubectl rollout restart`로 무중단 배포
+
+## 설계 메모
+
+- **Clean Architecture 4계층**: `api → application → adapter → domain`. 도메인은 `dataclass`만으로 정의해 FastAPI·Motor·Qdrant에 의존하지 않습니다. 단위 테스트와 인프라 교체(예: Qdrant → pgvector)가 용이합니다.
+- **의존성 주입**: 인증·DB·외부 서비스는 모두 FastAPI `Depends`로 주입. 라우터 함수 시그니처만 봐도 어떤 외부 자원을 쓰는지 명확합니다.
+- **소유권 격리**: 인증 사용자 ID는 모든 쿼리에 명시적으로 전달합니다. `find_by_id(id, owner_id)` 패턴으로 다른 사용자 리소스가 ID 추측만으로 노출되지 않도록 했습니다.
+- **임포트의 멱등성**: `source_id` 기반 중복 검사로 같은 export 파일을 여러 번 임포트해도 안전합니다.
+- **부가 작업 비격리**: 임포트나 요약 생성 시 부가적인 임베딩 호출이 실패해도 본 작업 응답을 막지 않도록 `try/except + warning` 로깅 처리. 사후 재인덱싱(`/search/index`)으로 복구 가능합니다.
+- **AI 비용 가시화**: 모든 LLM 호출(채팅·요약·퀴즈·임베딩·뉴스 분석)에 단가 테이블 적용. 메시지/대화/기사 단위로 비용을 저장해 어떤 기능이 얼마를 썼는지 추적합니다.
+
+## 관련 문서
+
+- `k8s/README.md` — Kubernetes base/AWS overlay 적용 절차
+- `CLAUDE.md` — 로컬 AI 에이전트 작업 가이드 (코드 컨벤션, 한국어 주석 규칙)
