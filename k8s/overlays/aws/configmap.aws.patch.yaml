@@ -9,3 +9,6 @@ data:
   NUXT_API_BASE_SERVER: "http://mk3-api:8001"
   CORS_ORIGINS: "[\"http://mk2.local\"]"
   AUTH_SERVICE_URL: "http://mk2-auth.pos-mk2.svc.cluster.local:3002"
+  S3_BUCKET: "jsh-ai-dev-s3-bucket"
+  S3_PREFIX: "pos-mk3-import-data"
+  AWS_REGION: "ap-northeast-2"
