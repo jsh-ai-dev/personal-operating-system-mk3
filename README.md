@@ -42,7 +42,7 @@ mk3에는 Nuxt 3 기반의 `mk3-web`도 포함되어 있지만, 실사용 메인
 
 ## 구현 기능
 
-### 1. 멀티 LLM 채팅 (SSE 스트리밍)
+### 1. LLM 채팅 (SSE 스트리밍)
 
 OpenAI·Anthropic·Google API를 직접 호출하고 응답을 Server-Sent Events로 실시간 스트리밍합니다. 응답 완료 시 토큰 수와 비용을 메시지·대화 단위로 MongoDB에 누적 저장합니다.
 
@@ -106,7 +106,6 @@ Claude.ai의 Cloudflare 봇 탐지를 우회하기 위해 일반 headless Playwr
 - `--remote-debugging-port=9222`로 띄운 실제 Chrome에 Playwright가 attach
 - Chrome 창은 Windows API(`SetWindowPos -32000,-32000` + `WS_EX_TOOLWINDOW`)로 화면 밖으로 이동 — `SW_HIDE`는 렌더러를 절전 모드로 빠뜨려 페이지 inner_text 호출이 타임아웃 나기 때문
 - usage 페이지만 `wait_until='networkidle'` 사용 — SPA가 페이지 로드 후 별도 API로 사용량 데이터를 가져오는 구조
-- 첫 실행 ~5초 비용 절감을 위해 page만 close하고 Chrome 프로세스는 유지
 - 5개 서비스가 같은 Chrome 인스턴스를 공유하므로 대시보드 새로고침은 순차 실행
 
 ### 6. AI 신문 스크랩 + 분석
@@ -284,8 +283,3 @@ npm run dev
 - **임포트의 멱등성**: `source_id` 기반 중복 검사로 같은 export 파일을 여러 번 임포트해도 안전합니다.
 - **부가 작업 비격리**: 임포트나 요약 생성 시 부가적인 임베딩 호출이 실패해도 본 작업 응답을 막지 않도록 `try/except + warning` 로깅 처리. 사후 재인덱싱(`/search/index`)으로 복구 가능합니다.
 - **AI 비용 가시화**: 모든 LLM 호출(채팅·요약·퀴즈·임베딩·뉴스 분석)에 단가 테이블 적용. 메시지/대화/기사 단위로 비용을 저장해 어떤 기능이 얼마를 썼는지 추적합니다.
-
-## 관련 문서
-
-- `k8s/README.md` — Kubernetes base/AWS overlay 적용 절차
-- `CLAUDE.md` — 로컬 AI 에이전트 작업 가이드 (코드 컨벤션, 한국어 주석 규칙)

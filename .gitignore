@@ -237,3 +237,5 @@ backend/data/
 # Kubernetes local secrets
 k8s/base/secret.yaml
 k8s/overlays/aws/secret.aws.yaml
+
+CLAUDE.md
