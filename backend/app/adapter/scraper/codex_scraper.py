@@ -4,11 +4,13 @@
 # /backend-api/wham/usage 가 5시간/7일 창 기준 잔여 할당량을 반환함
 
 import asyncio
+import calendar
 import socket
 import subprocess
 import time
 import ctypes
 import ctypes.wintypes
+from datetime import datetime, timezone, timedelta
 from pathlib import Path
 
 from playwright.sync_api import sync_playwright
@@ -216,7 +218,10 @@ def _parse_result(wham: dict | None, sub: dict | None = None, sub_detail: dict |
                 result['next_billing_date'] = str(val)
                 break
 
-    if sub_detail and sub_detail.get('active_start'):
+    current_cycle_start = _current_cycle_start_from_next_billing(result.get('next_billing_date'))
+    if current_cycle_start:
+        result['subscribed_at'] = current_cycle_start
+    elif sub_detail and sub_detail.get('active_start'):
         result['subscribed_at'] = sub_detail['active_start']
 
     return result
@@ -225,6 +230,24 @@ def _parse_result(wham: dict | None, sub: dict | None = None, sub_detail: dict |
 def _unix_to_iso(ts: int) -> str:
     from datetime import datetime, timezone
     return datetime.fromtimestamp(ts, tz=timezone.utc).isoformat()
+
+
+def _current_cycle_start_from_next_billing(next_billing_date: str | None) -> str | None:
+    if not next_billing_date:
+        return None
+    try:
+        dt = datetime.fromisoformat(next_billing_date).astimezone(timezone(timedelta(hours=9)))
+    except ValueError:
+        return None
+
+    year = dt.year
+    month = dt.month - 1
+    if month == 0:
+        year -= 1
+        month = 12
+
+    day = min(dt.day, calendar.monthrange(year, month)[1])
+    return f"{year:04d}-{month:02d}-{day:02d}"
 
 
 async def scrape_codex() -> dict:

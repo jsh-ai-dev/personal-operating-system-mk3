@@ -48,6 +48,9 @@ async def trigger_claude_scrape(
     if billing_day:
         update_data['billing_day'] = billing_day
 
+    if result.get('next_billing_date'):
+        update_data['next_billing_date'] = result['next_billing_date']
+
     # 현재 세션 사용량을 usage_current/limit에 반영
     if result.get('session_usage_pct') is not None:
         update_data['usage_current'] = result['session_usage_pct']

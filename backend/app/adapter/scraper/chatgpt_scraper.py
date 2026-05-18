@@ -9,11 +9,13 @@
 #      (토큰 없이 호출하면 guest 뷰를 반환해 구독 정보가 비어 있음)
 
 import asyncio
+import calendar
 import socket
 import subprocess
 import time
 import ctypes
 import ctypes.wintypes
+from datetime import datetime, timezone, timedelta
 from pathlib import Path
 
 from playwright.sync_api import sync_playwright
@@ -225,7 +227,10 @@ def _parse_result(session: dict | None, me: dict | None, subscription: dict | No
         result['next_billing_date'] = billing_date
 
     # 구독 시작일 — subscriptions 엔드포인트의 active_start (UTC 날짜만 저장, 시간대 변환 방지)
-    if sub_detail and sub_detail.get('active_start'):
+    current_cycle_start = _current_cycle_start_from_next_billing(billing_date)
+    if current_cycle_start:
+        result['subscribed_at'] = current_cycle_start
+    elif sub_detail and sub_detail.get('active_start'):
         result['subscribed_at'] = sub_detail['active_start']
 
     return result
@@ -258,6 +263,24 @@ def _extract_billing_date(subscription: dict | None) -> str | None:
         if val:
             return str(val)
     return None
+
+
+def _current_cycle_start_from_next_billing(next_billing_date: str | None) -> str | None:
+    if not next_billing_date:
+        return None
+    try:
+        dt = datetime.fromisoformat(next_billing_date).astimezone(timezone(timedelta(hours=9)))
+    except ValueError:
+        return None
+
+    year = dt.year
+    month = dt.month - 1
+    if month == 0:
+        year -= 1
+        month = 12
+
+    day = min(dt.day, calendar.monthrange(year, month)[1])
+    return f"{year:04d}-{month:02d}-{day:02d}"
 
 
 async def scrape_chatgpt() -> dict:

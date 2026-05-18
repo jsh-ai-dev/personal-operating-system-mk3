@@ -3,12 +3,14 @@
 # Windows API(ctypes)로 크롬 창을 완전히 숨겨 작업표시줄에서도 보이지 않게 함
 
 import asyncio
+import calendar
 import ctypes
 import ctypes.wintypes
 import re
 import socket
 import subprocess
 import time
+from datetime import date, datetime
 from pathlib import Path
 
 from playwright.sync_api import sync_playwright
@@ -134,11 +136,17 @@ def _scrape_sync() -> dict:
             page.goto('https://claude.ai/settings/usage', wait_until='networkidle', timeout=30000)
             usage_text = page.inner_text('body')
 
+            next_billing_date = _extract_billing_date(billing_text)
+            subscribed_at = (
+                _extract_subscribed_at(billing_text)
+                or _current_cycle_start_from_next_billing(next_billing_date)
+            )
+
             return {
                 'login_required': False,
                 'plan_name': _extract_plan(billing_text),
-                'next_billing_date': _extract_billing_date(billing_text),
-                'subscribed_at': _extract_subscribed_at(billing_text),
+                'next_billing_date': next_billing_date,
+                'subscribed_at': subscribed_at,
                 **_extract_usage(usage_text),
             }
         finally:
@@ -193,18 +201,15 @@ def _extract_usage(text: str) -> dict:
 
 
 def _extract_subscribed_at(text: str) -> str | None:
-    # 청구서 목록은 최신순이므로 마지막 날짜 = 최초 구독일
-    # "2026년 4월 22일" 형태로 표시됨
-    dates = re.findall(r'(\d{4}년 \d{1,2}월 \d{1,2}일)', text)
-    if not dates:
+    candidates = _extract_date_candidates(text)
+    if not candidates:
         return None
-    oldest = dates[-1]
-    # "2026년 4월 22일" → ISO 변환
-    m = re.match(r'(\d{4})년 (\d{1,2})월 (\d{1,2})일', oldest)
-    if not m:
-        return None
-    from datetime import date
-    return date(int(m.group(1)), int(m.group(2)), int(m.group(3))).isoformat()
+
+    today = date.today()
+    past_or_today = [d for d in candidates if d <= today]
+    if past_or_today:
+        return max(past_or_today).isoformat()
+    return None
 
 
 def _extract_billing_date(text: str) -> str | None:
@@ -217,4 +222,57 @@ def _extract_billing_date(text: str) -> str | None:
         match = re.search(pattern, text, re.IGNORECASE)
         if match:
             return match.group(1).strip()
+    return None
+
+
+def _current_cycle_start_from_next_billing(next_billing_date: str | None) -> str | None:
+    next_date = _parse_date_text(next_billing_date)
+    if not next_date:
+        return None
+
+    year = next_date.year
+    month = next_date.month - 1
+    if month == 0:
+        year -= 1
+        month = 12
+
+    day = min(next_date.day, calendar.monthrange(year, month)[1])
+    return date(year, month, day).isoformat()
+
+
+def _extract_date_candidates(text: str) -> list[date]:
+    raw_dates = [
+        *re.findall(r'\d{4}년 \d{1,2}월 \d{1,2}일', text),
+        *re.findall(r'\b[A-Z][a-z]+ \d{1,2},? \d{4}\b', text),
+        *re.findall(r'\b\d{4}-\d{2}-\d{2}\b', text),
+    ]
+    candidates: list[date] = []
+    for raw in raw_dates:
+        parsed = _parse_date_text(raw)
+        if parsed:
+            candidates.append(parsed)
+    return candidates
+
+
+def _parse_date_text(value: str | None) -> date | None:
+    if not value:
+        return None
+
+    value = value.strip()
+
+    match = re.match(r'(\d{4})년 (\d{1,2})월 (\d{1,2})일', value)
+    if match:
+        return date(int(match.group(1)), int(match.group(2)), int(match.group(3)))
+
+    try:
+        return datetime.fromisoformat(value).date()
+    except ValueError:
+        pass
+
+    for fmt in ("%B %d, %Y", "%B %d %Y", "%b %d, %Y", "%b %d %Y"):
+        try:
+            return datetime.strptime(value, fmt).date()
+        except ValueError:
+            continue
+
     return None

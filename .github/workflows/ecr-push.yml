@@ -55,6 +55,14 @@ jobs:
     runs-on: [self-hosted, linux, pos-deploy]
     if: github.event_name == 'workflow_dispatch' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master')
     steps:
+      - name: Pull latest images on k3s node
+        run: |
+          set -euo pipefail
+          ECR_AUTH=$(aws ecr get-login-password --region ap-northeast-2)
+          ECR_REGISTRY=948360715051.dkr.ecr.ap-northeast-2.amazonaws.com
+          sudo k3s ctr -n k8s.io images pull --user "AWS:${ECR_AUTH}" ${ECR_REGISTRY}/personal-operating-system-mk3-api:latest
+          sudo k3s ctr -n k8s.io images pull --user "AWS:${ECR_AUTH}" ${ECR_REGISTRY}/personal-operating-system-mk3-web:latest
+
       - name: Restart mk3 deployments on k3s
         run: |
           set -euo pipefail
