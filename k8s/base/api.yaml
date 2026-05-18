@@ -61,6 +61,21 @@ spec:
                 configMapKeyRef:
                   name: mk3-config
                   key: AUTH_SERVICE_URL
+            - name: AWS_REGION
+              valueFrom:
+                configMapKeyRef:
+                  name: mk3-config
+                  key: AWS_REGION
+            - name: S3_BUCKET
+              valueFrom:
+                configMapKeyRef:
+                  name: mk3-config
+                  key: S3_BUCKET
+            - name: S3_PREFIX
+              valueFrom:
+                configMapKeyRef:
+                  name: mk3-config
+                  key: S3_PREFIX
             - name: OPENAI_API_KEY
               valueFrom:
                 secretKeyRef:
