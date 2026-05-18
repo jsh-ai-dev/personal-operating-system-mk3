@@ -15,6 +15,7 @@ class ConversationRepository:
         self.conversations = db["conversations"]
         self.messages = db["messages"]
         self.import_history = db["import_history"]
+        self.import_uploads = db["import_uploads"]
 
     def _to_conversation(self, doc: dict) -> Conversation:
         def iso(v):
@@ -266,7 +267,7 @@ class ConversationRepository:
             return []
         docs = await self.messages.find(
             {"conversation_id": oid, "owner_id": owner_id}
-        ).sort("created_at", 1).to_list(None)
+        ).sort("_id", 1).to_list(None)
         return [self._to_message(doc) for doc in docs]
 
     async def insert_message(
@@ -313,3 +314,51 @@ class ConversationRepository:
                 return v.replace(tzinfo=timezone.utc).isoformat() if v.tzinfo is None else v.isoformat()
             return v
         return {doc["service"]: {"last_imported_at": iso(doc["last_imported_at"]), "last_imported_count": doc["last_imported_count"]} for doc in docs}
+
+    async def create_import_upload(
+        self,
+        owner_id: str,
+        service: str,
+        upload_id: str,
+        s3_prefix: str,
+        file_keys: list[str],
+        original_filenames: list[str] | None = None,
+    ) -> None:
+        await self.import_uploads.insert_one({
+            "owner_id": owner_id,
+            "service": service,
+            "upload_id": upload_id,
+            "s3_prefix": s3_prefix,
+            "file_keys": file_keys,
+            "original_filenames": original_filenames or [],
+            "file_count": len(file_keys),
+            "created_at": datetime.now(timezone.utc),
+            "imported_at": None,
+        })
+
+    async def find_import_upload(self, owner_id: str, service: str, upload_id: str) -> dict | None:
+        return await self.import_uploads.find_one({
+            "owner_id": owner_id,
+            "service": service,
+            "upload_id": upload_id,
+        })
+
+    async def list_import_uploads(self, owner_id: str, service: str) -> list[dict]:
+        return await self.import_uploads.find({
+            "owner_id": owner_id,
+            "service": service,
+        }).sort("created_at", -1).to_list(None)
+
+    async def delete_import_upload(self, owner_id: str, service: str, upload_id: str) -> bool:
+        result = await self.import_uploads.delete_one({
+            "owner_id": owner_id,
+            "service": service,
+            "upload_id": upload_id,
+        })
+        return result.deleted_count > 0
+
+    async def mark_import_upload_imported(self, owner_id: str, service: str, upload_id: str) -> None:
+        await self.import_uploads.update_one(
+            {"owner_id": owner_id, "service": service, "upload_id": upload_id},
+            {"$set": {"imported_at": datetime.now(timezone.utc)}},
+        )

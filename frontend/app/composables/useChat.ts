@@ -63,6 +63,17 @@ export interface ChatDoneEvent {
   cost_usd: number
 }
 
+export type ImportTarget = 'jetbrains-codex' | 'claude-export' | 'claude-code' | 'gemini-takeout' | 'chatgpt-export'
+
+export interface ImportUpload {
+  upload_id: string
+  service: ImportTarget
+  filenames: string[]
+  file_count: number
+  created_at: string
+  imported_at: string | null
+}
+
 export const useChat = () => {
   const api = useApi()
   const config = useRuntimeConfig()
@@ -72,22 +83,24 @@ export const useChat = () => {
       query: includeHidden ? { include_hidden: true } : {},
     })
 
-  const importJetbrainsCodex = () =>
-    api<{ imported: number; skipped: number; total: number }>('/api/v1/import/jetbrains-codex', { method: 'POST' })
+  const importBody = (uploadId?: string) => uploadId ? { upload_id: uploadId } : undefined
 
-  const importGeminiTakeout = () =>
-    api<{ imported: number; skipped: number; total: number }>('/api/v1/import/gemini-takeout', { method: 'POST' })
+  const importJetbrainsCodex = (uploadId?: string) =>
+    api<{ imported: number; skipped: number; total: number }>('/api/v1/import/jetbrains-codex', { method: 'POST', body: importBody(uploadId) })
 
-  const importClaudeExport = () =>
-    api<{ imported: number; skipped: number; total: number }>('/api/v1/import/claude-export', { method: 'POST' })
+  const importGeminiTakeout = (uploadId?: string) =>
+    api<{ imported: number; skipped: number; total: number }>('/api/v1/import/gemini-takeout', { method: 'POST', body: importBody(uploadId) })
 
-  const importClaudeCode = () =>
-    api<{ imported: number; skipped: number; total: number }>('/api/v1/import/claude-code', { method: 'POST' })
+  const importClaudeExport = (uploadId?: string) =>
+    api<{ imported: number; skipped: number; total: number }>('/api/v1/import/claude-export', { method: 'POST', body: importBody(uploadId) })
 
-  const importChatGptExport = () =>
-    api<{ imported: number; skipped: number; total: number }>('/api/v1/import/chatgpt-export', { method: 'POST' })
+  const importClaudeCode = (uploadId?: string) =>
+    api<{ imported: number; skipped: number; total: number }>('/api/v1/import/claude-code', { method: 'POST', body: importBody(uploadId) })
 
-  const uploadImportFiles = async (service: string, files: File[]): Promise<{ uploaded: number }> => {
+  const importChatGptExport = (uploadId?: string) =>
+    api<{ imported: number; skipped: number; total: number }>('/api/v1/import/chatgpt-export', { method: 'POST', body: importBody(uploadId) })
+
+  const uploadImportFiles = async (service: string, files: File[]): Promise<{ uploaded: number; upload_id: string }> => {
     const formData = new FormData()
     for (const file of files) formData.append('files', file)
     // FormData는 $fetch가 Content-Type을 자동으로 multipart/form-data로 설정
@@ -97,6 +110,12 @@ export const useChat = () => {
       body: formData,
     })
   }
+
+  const listImportUploads = (service: ImportTarget) =>
+    api<ImportUpload[]>(`/api/v1/import/uploads/${service}`)
+
+  const deleteImportUpload = (service: ImportTarget, uploadId: string) =>
+    api(`/api/v1/import/uploads/${service}/${uploadId}`, { method: 'DELETE' })
 
   const setHidden = (id: string, isHidden: boolean) =>
     api(`/api/v1/chat/conversations/${id}`, { method: 'PATCH', body: { is_hidden: isHidden } })
@@ -222,5 +241,5 @@ export const useChat = () => {
       { method: 'POST', body: { model } },
     )
 
-  return { listConversations, getConversation, getMessages, getAllModels, chatOpenAI, chatGemini, chatClaude, summarizeConversation, generateQuiz, importJetbrainsCodex, importGeminiTakeout, importClaudeExport, importClaudeCode, importChatGptExport, uploadImportFiles, setHidden, deleteConversation, setMessageHidden, updateMessageContent, deleteMessage }
+  return { listConversations, getConversation, getMessages, getAllModels, chatOpenAI, chatGemini, chatClaude, summarizeConversation, generateQuiz, importJetbrainsCodex, importGeminiTakeout, importClaudeExport, importClaudeCode, importChatGptExport, uploadImportFiles, listImportUploads, deleteImportUpload, setHidden, deleteConversation, setMessageHidden, updateMessageContent, deleteMessage }
 }

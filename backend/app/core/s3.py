@@ -38,6 +38,22 @@ class S3Client:
             lambda: self._client.put_object(Bucket=self._bucket, Key=full_key, Body=content, ContentType=content_type),
         )
 
+    async def delete_files(self, keys: list[str]) -> None:
+        """Delete S3 objects by repository-relative keys."""
+        if not keys:
+            return
+        loop = asyncio.get_running_loop()
+
+        def _delete() -> None:
+            for i in range(0, len(keys), 1000):
+                chunk = keys[i:i + 1000]
+                self._client.delete_objects(
+                    Bucket=self._bucket,
+                    Delete={"Objects": [{"Key": self._full_key(key)} for key in chunk], "Quiet": True},
+                )
+
+        await loop.run_in_executor(None, _delete)
+
     async def list_keys(self, prefix: str) -> list[str]:
         """prefix 하위 오브젝트 키 목록 반환 — 폴더 객체(끝이 /)는 제외, prefix 부분은 제거해서 반환"""
         loop = asyncio.get_running_loop()

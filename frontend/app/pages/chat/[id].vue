@@ -95,7 +95,7 @@ const summaryError = ref('')
 const priorModel = messages.value.find(m => m.role === 'assistant')?.model ?? ''
 const selectedModelId = ref(models.find(m => m.id === priorModel)?.id ?? models.find(m => m.enabled !== false)?.id ?? '')
 const selectedModel = computed<AiModel | undefined>(() => models.find(m => m.id === selectedModelId.value))
-const IMPORT_MODELS = new Set(['codex', 'claude-code', 'claude', 'gemini'])
+const IMPORT_MODELS = new Set(['codex', 'claude-code', 'claude', 'gemini', 'chatgpt'])
 // 임포트 대화는 읽기 전용으로 고정
 const isReadOnly = ref(
   !isNew &&
@@ -173,6 +173,16 @@ const scrollToBottom = async () => {
     messagesEl.value.scrollTop = messagesEl.value.scrollHeight
   }
 }
+
+onMounted(async () => {
+  await nextTick()
+  if (!messagesEl.value) return
+  if (!isNew && IMPORT_MODELS.has(conversationData.value?.model ?? '')) {
+    messagesEl.value.scrollTop = 0
+    return
+  }
+  messagesEl.value.scrollTop = messagesEl.value.scrollHeight
+})
 
 const inputRef = ref<HTMLTextAreaElement | null>(null)
 

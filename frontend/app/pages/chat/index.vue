@@ -1,7 +1,9 @@
 <!-- [페이지] /chat — 전체 대화 목록 페이지. 각 항목 클릭 시 /chat/[id]로 이동 -->
 
 <script setup lang="ts">
-const { listConversations, setHidden, deleteConversation, importJetbrainsCodex, importGeminiTakeout, importClaudeExport, importClaudeCode, importChatGptExport, uploadImportFiles } = useChat()
+import type { ImportTarget, ImportUpload } from '~/composables/useChat'
+
+const { listConversations, setHidden, deleteConversation, importJetbrainsCodex, importGeminiTakeout, importClaudeExport, importClaudeCode, importChatGptExport, uploadImportFiles, listImportUploads, deleteImportUpload } = useChat()
 
 // refresh는 runImport에서 참조하므로 먼저 선언
 const showHidden = ref(false)
@@ -17,8 +19,11 @@ const importingClaudeCode = ref(false)
 const importingChatGpt = ref(false)
 const importResult = ref('')
 const importModalOpen = ref(false)
-const selectedImportKey = ref<'jetbrains-codex' | 'claude-export' | 'claude-code' | 'gemini-takeout' | 'chatgpt-export'>('jetbrains-codex')
+const selectedImportKey = ref<ImportTarget>('jetbrains-codex')
 const selectedFiles = ref<File[]>([])
+const selectedUploadId = ref('')
+const importUploads = ref<Partial<Record<ImportTarget, ImportUpload[]>>>({})
+const uploadsLoading = ref(false)
 
 const importOptions = [
   { label: 'ChatGPT', key: 'chatgpt-export', enabled: true },
@@ -46,7 +51,31 @@ const fileInputConfig = computed(() => {
 const onFileChange = (e: Event) => {
   const input = e.target as HTMLInputElement
   selectedFiles.value = input.files ? Array.from(input.files) : []
+  if (selectedFiles.value.length > 0) selectedUploadId.value = ''
 }
+
+const refreshImportUploads = async () => {
+  uploadsLoading.value = true
+  try {
+    const uploads = await listImportUploads(selectedImportKey.value)
+    importUploads.value[selectedImportKey.value] = uploads
+    selectedUploadId.value = selectedUploadId.value && uploads.some(upload => upload.upload_id === selectedUploadId.value)
+      ? selectedUploadId.value
+      : uploads[0]?.upload_id ?? ''
+  } catch {
+    importUploads.value[selectedImportKey.value] = []
+    selectedUploadId.value = ''
+  } finally {
+    uploadsLoading.value = false
+  }
+}
+
+watch([importModalOpen, selectedImportKey], async ([open]) => {
+  if (!open) return
+  selectedFiles.value = []
+  selectedUploadId.value = ''
+  await refreshImportUploads()
+})
 
 type FilterKey =
   | 'openai'
@@ -101,11 +130,11 @@ const applyRangePreset = (preset: '7d' | '30d' | 'month') => {
   selectedPreset.value = preset
 }
 
-const _runImport = async (fn: () => Promise<{ imported: number; skipped: number; total: number }>, setLoading: (v: boolean) => void) => {
+const _runImport = async (fn: (uploadId?: string) => Promise<{ imported: number; skipped: number; total: number }>, setLoading: (v: boolean) => void, uploadId?: string) => {
   setLoading(true)
   importResult.value = ''
   try {
-    const result = await fn()
+    const result = await fn(uploadId)
     importResult.value = result.imported > 0 ? `${result.imported}개 가져옴` : '이미 최신 상태'
     if (result.imported > 0) await refresh()
   } catch (e) {
@@ -116,19 +145,21 @@ const _runImport = async (fn: () => Promise<{ imported: number; skipped: number;
   }
 }
 
-const runImportCodex = () => _runImport(importJetbrainsCodex, v => { importingCodex.value = v })
-const runImportGemini = () => _runImport(importGeminiTakeout, v => { importingGemini.value = v })
-const runImportClaude = () => _runImport(importClaudeExport, v => { importingClaude.value = v })
-const runImportClaudeCode = () => _runImport(importClaudeCode, v => { importingClaudeCode.value = v })
-const runImportChatGpt = () => _runImport(importChatGptExport, v => { importingChatGpt.value = v })
+const runImportCodex = (uploadId?: string) => _runImport(importJetbrainsCodex, v => { importingCodex.value = v }, uploadId)
+const runImportGemini = (uploadId?: string) => _runImport(importGeminiTakeout, v => { importingGemini.value = v }, uploadId)
+const runImportClaude = (uploadId?: string) => _runImport(importClaudeExport, v => { importingClaude.value = v }, uploadId)
+const runImportClaudeCode = (uploadId?: string) => _runImport(importClaudeCode, v => { importingClaudeCode.value = v }, uploadId)
+const runImportChatGpt = (uploadId?: string) => _runImport(importChatGptExport, v => { importingChatGpt.value = v }, uploadId)
 
 const isImporting = computed(() => importingCodex.value || importingGemini.value || importingClaude.value || importingClaudeCode.value || importingChatGpt.value)
 
 const runImportByKey = async () => {
+  let uploadId: string | undefined
   // 파일이 선택돼 있으면 S3 업로드 먼저
   if (selectedFiles.value.length > 0) {
     try {
-      await uploadImportFiles(selectedImportKey.value, selectedFiles.value)
+      const upload = await uploadImportFiles(selectedImportKey.value, selectedFiles.value)
+      uploadId = upload.upload_id
     } catch {
       importResult.value = '업로드 실패'
       setTimeout(() => { importResult.value = '' }, 3000)
@@ -136,16 +167,37 @@ const runImportByKey = async () => {
       selectedFiles.value = []
       return
     }
+  } else if (selectedUploadId.value) {
+    uploadId = selectedUploadId.value
+  } else {
+    importResult.value = '가져올 업로드 파일을 선택하세요'
+    setTimeout(() => { importResult.value = '' }, 3000)
+    return
   }
 
   importModalOpen.value = false
   selectedFiles.value = []
 
-  if (selectedImportKey.value === 'jetbrains-codex') await runImportCodex()
-  if (selectedImportKey.value === 'claude-export') await runImportClaude()
-  if (selectedImportKey.value === 'claude-code') await runImportClaudeCode()
-  if (selectedImportKey.value === 'gemini-takeout') await runImportGemini()
-  if (selectedImportKey.value === 'chatgpt-export') await runImportChatGpt()
+  if (selectedImportKey.value === 'jetbrains-codex') await runImportCodex(uploadId)
+  if (selectedImportKey.value === 'claude-export') await runImportClaude(uploadId)
+  if (selectedImportKey.value === 'claude-code') await runImportClaudeCode(uploadId)
+  if (selectedImportKey.value === 'gemini-takeout') await runImportGemini(uploadId)
+  if (selectedImportKey.value === 'chatgpt-export') await runImportChatGpt(uploadId)
+}
+
+const removeImportUpload = async (upload: ImportUpload) => {
+  if (!confirm('업로드 원본 파일을 S3에서 삭제할까요?')) return
+  try {
+    await deleteImportUpload(selectedImportKey.value, upload.upload_id)
+    importUploads.value[selectedImportKey.value] = (importUploads.value[selectedImportKey.value] ?? [])
+      .filter(item => item.upload_id !== upload.upload_id)
+    if (selectedUploadId.value === upload.upload_id) selectedUploadId.value = ''
+    importResult.value = '업로드 파일 삭제 완료'
+  } catch {
+    importResult.value = '업로드 파일 삭제 실패'
+  } finally {
+    setTimeout(() => { importResult.value = '' }, 3000)
+  }
 }
 
 const toggleShowHidden = async () => {
@@ -241,6 +293,8 @@ const filteredConversations = computed(() => {
     return true
   })
 })
+
+const currentUploads = computed(() => importUploads.value[selectedImportKey.value] ?? [])
 </script>
 
 <template>
@@ -261,7 +315,7 @@ const filteredConversations = computed(() => {
     <div v-if="importModalOpen" class="modal-overlay">
       <div class="modal">
         <p class="modal-title">내역 가져오기</p>
-        <select v-model="selectedImportKey" class="modal-select" :disabled="isImporting" @change="selectedFiles = []">
+        <select v-model="selectedImportKey" class="modal-select" :disabled="isImporting" @change="selectedFiles = []; selectedUploadId = ''">
           <option v-for="opt in importOptions" :key="opt.key" :value="opt.key" :disabled="!opt.enabled">
             {{ opt.label }} {{ opt.enabled ? '' : '(준비 중...)' }}
           </option>
@@ -280,9 +334,42 @@ const filteredConversations = computed(() => {
           </label>
           <span v-if="selectedFiles.length > 0" class="file-count">{{ selectedFiles.length }}개 선택됨</span>
         </div>
+        <div class="upload-list-header">
+          <span>업로드된 파일</span>
+          <span v-if="uploadsLoading" class="upload-list-meta">불러오는 중</span>
+        </div>
+        <div class="upload-list">
+          <label
+            v-for="upload in currentUploads"
+            :key="upload.upload_id"
+            class="upload-item"
+            :class="{ selected: selectedUploadId === upload.upload_id }"
+          >
+            <input
+              v-model="selectedUploadId"
+              type="radio"
+              name="import-upload"
+              :value="upload.upload_id"
+              :disabled="isImporting || selectedFiles.length > 0"
+            >
+            <span class="upload-item-body">
+              <span class="upload-item-title">
+                {{ upload.filenames.length === 1 ? upload.filenames[0] : `${upload.file_count}개 파일` }}
+              </span>
+              <span class="upload-item-meta">
+                업로드 {{ new Date(upload.created_at).toLocaleString('ko-KR', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }) }}
+                <template v-if="upload.imported_at">
+                  · 가져오기 {{ new Date(upload.imported_at).toLocaleString('ko-KR', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }) }}
+                </template>
+              </span>
+            </span>
+            <button class="upload-delete-btn" :disabled="isImporting" @click.prevent.stop="removeImportUpload(upload)">삭제</button>
+          </label>
+          <p v-if="currentUploads.length === 0" class="upload-empty">아직 업로드된 파일이 없습니다.</p>
+        </div>
         <div class="modal-actions">
           <button class="btn-import" @click="importModalOpen = false; selectedFiles = []">취소</button>
-          <button class="btn-import" :disabled="isImporting || !importOptions.find(v => v.key === selectedImportKey)?.enabled" @click="runImportByKey">
+          <button class="btn-import" :disabled="isImporting || !importOptions.find(v => v.key === selectedImportKey)?.enabled || (selectedFiles.length === 0 && !selectedUploadId)" @click="runImportByKey">
             {{ selectedFiles.length > 0 ? '업로드 & 가져오기' : '가져오기' }}
           </button>
         </div>
@@ -409,7 +496,9 @@ h1 { font-size: 1.3rem; margin: 0; }
   z-index: 50;
 }
 .modal {
-  width: 320px;
+  width: min(520px, calc(100vw - 32px));
+  max-height: calc(100vh - 48px);
+  overflow-y: auto;
   background: #fff;
   border: 1px solid #e5e7eb;
   border-radius: 10px;
@@ -431,6 +520,79 @@ h1 { font-size: 1.3rem; margin: 0; }
 .file-hint { font-size: 0.72rem; color: #9ca3af; }
 .file-input { font-family: monospace; font-size: 0.78rem; width: 100%; }
 .file-count { font-size: 0.75rem; color: #059669; white-space: nowrap; }
+.upload-list-header {
+  display: flex;
+  justify-content: space-between;
+  margin: 10px 0 6px;
+  font-size: 0.76rem;
+  font-weight: 700;
+  color: #374151;
+}
+.upload-list-meta {
+  font-weight: 400;
+  color: #9ca3af;
+}
+.upload-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  max-height: 220px;
+  overflow-y: auto;
+}
+.upload-item {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 8px;
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  padding: 8px;
+  cursor: pointer;
+}
+.upload-item.selected {
+  border-color: #6366f1;
+  background: #eef2ff;
+}
+.upload-item-body {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+}
+.upload-item-title {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 0.76rem;
+  font-weight: 700;
+  color: #111827;
+}
+.upload-item-meta {
+  font-size: 0.7rem;
+  color: #6b7280;
+}
+.upload-delete-btn {
+  padding: 4px 7px;
+  border: 1px solid #fecaca;
+  border-radius: 6px;
+  background: #fff;
+  color: #dc2626;
+  font-family: monospace;
+  font-size: 0.7rem;
+  cursor: pointer;
+}
+.upload-delete-btn:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+.upload-empty {
+  margin: 0;
+  padding: 10px;
+  border: 1px dashed #d1d5db;
+  border-radius: 8px;
+  color: #9ca3af;
+  font-size: 0.76rem;
+}
 .filter-row {
   display: flex;
   flex-wrap: wrap;

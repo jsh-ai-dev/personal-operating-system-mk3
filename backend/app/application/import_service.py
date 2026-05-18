@@ -7,6 +7,7 @@ import logging
 import shutil
 import tempfile
 from pathlib import Path
+from urllib.parse import quote
 
 from app.adapter.importer.chatgpt_importer import parse_export as parse_chatgpt_export
 from app.adapter.importer.claude_code_importer import scan_sessions as scan_claude_code_sessions
@@ -25,13 +26,37 @@ _S3_CLAUDE_CODE_PREFIX = "claude-code/"
 _S3_CODEX_PREFIX = "codex/"
 
 
+class ImportUploadRequired(Exception):
+    pass
+
+
+class ImportUploadNotFound(Exception):
+    pass
+
+
 class ImportService:
     def __init__(self, repo: ConversationRepository, search_svc=None, s3=None):
         self.repo = repo
+        self.search_svc = search_svc
         # search_svc는 선택적 의존성 — OpenAI 키가 없는 환경에서도 임포트는 동작해야 함
         self.search_svc = search_svc
         # s3는 선택적 의존성 — None이면 로컬 data/ 경로에서 읽음
         self.s3 = s3
+
+    def _s3_key(self, owner_id: str, upload_id: str, key: str) -> str:
+        return f"imports/{quote(owner_id, safe='')}/{upload_id}/{key}"
+
+    async def _resolve_upload_id(self, owner_id: str, service: str, upload_id: str | None) -> str:
+        if not upload_id:
+            raise ImportUploadRequired("S3 import requires a selected upload_id.")
+        upload = await self.repo.find_import_upload(owner_id, service, upload_id)
+        if not upload:
+            raise ImportUploadNotFound("Import upload was not found for this user and service.")
+        return upload["upload_id"]
+
+    async def _mark_upload_imported(self, owner_id: str, service: str, upload_id: str | None) -> None:
+        if upload_id:
+            await self.repo.mark_import_upload_imported(owner_id, service, upload_id)
 
     async def _try_embed(self, conversation_id: str, owner_id: str) -> None:
         if not self.search_svc:
@@ -57,9 +82,10 @@ class ImportService:
             await self.s3.download_file(key, tmp_dir / Path(key).name)
         return tmp_dir
 
-    async def import_jetbrains_codex(self, owner_id: str, aia_path: str) -> dict:
+    async def import_jetbrains_codex(self, owner_id: str, aia_path: str, upload_id: str | None = None) -> dict:
         if self.s3:
-            tmp_dir = await self._s3_download_prefix(_S3_CODEX_PREFIX)
+            upload_id = await self._resolve_upload_id(owner_id, "jetbrains-codex", upload_id)
+            tmp_dir = await self._s3_download_prefix(self._s3_key(owner_id, upload_id, _S3_CODEX_PREFIX))
             try:
                 sessions = scan_sessions(str(tmp_dir))
             finally:
@@ -99,11 +125,13 @@ class ImportService:
 
         if imported > 0:
             await self.repo.upsert_import_history("jetbrains-codex", owner_id, imported)
+        await self._mark_upload_imported(owner_id, "jetbrains-codex", upload_id)
         return {"imported": imported, "skipped": skipped, "total": len(sessions)}
 
-    async def import_claude_code(self, owner_id: str, code_path: str) -> dict:
+    async def import_claude_code(self, owner_id: str, code_path: str, upload_id: str | None = None) -> dict:
         if self.s3:
-            tmp_dir = await self._s3_download_prefix(_S3_CLAUDE_CODE_PREFIX)
+            upload_id = await self._resolve_upload_id(owner_id, "claude-code", upload_id)
+            tmp_dir = await self._s3_download_prefix(self._s3_key(owner_id, upload_id, _S3_CLAUDE_CODE_PREFIX))
             try:
                 sessions = scan_claude_code_sessions(str(tmp_dir))
             finally:
@@ -144,11 +172,13 @@ class ImportService:
 
         if imported > 0:
             await self.repo.upsert_import_history("claude-code", owner_id, imported)
+        await self._mark_upload_imported(owner_id, "claude-code", upload_id)
         return {"imported": imported, "skipped": skipped, "total": len(sessions)}
 
-    async def import_claude_export(self, owner_id: str, export_path: str) -> dict:
+    async def import_claude_export(self, owner_id: str, export_path: str, upload_id: str | None = None) -> dict:
         if self.s3:
-            tmp_dir, tmp_file = await self._s3_download_file(_S3_CLAUDE_KEY)
+            upload_id = await self._resolve_upload_id(owner_id, "claude-export", upload_id)
+            tmp_dir, tmp_file = await self._s3_download_file(self._s3_key(owner_id, upload_id, _S3_CLAUDE_KEY))
             try:
                 sessions = parse_claude_export(tmp_file)
             finally:
@@ -189,11 +219,13 @@ class ImportService:
 
         if imported > 0:
             await self.repo.upsert_import_history("claude-export", owner_id, imported)
+        await self._mark_upload_imported(owner_id, "claude-export", upload_id)
         return {"imported": imported, "skipped": skipped, "total": len(sessions)}
 
-    async def import_chatgpt_export(self, owner_id: str, export_path: str) -> dict:
+    async def import_chatgpt_export(self, owner_id: str, export_path: str, upload_id: str | None = None) -> dict:
         if self.s3:
-            tmp_dir, tmp_file = await self._s3_download_file(_S3_CHATGPT_KEY)
+            upload_id = await self._resolve_upload_id(owner_id, "chatgpt-export", upload_id)
+            tmp_dir, tmp_file = await self._s3_download_file(self._s3_key(owner_id, upload_id, _S3_CHATGPT_KEY))
             try:
                 sessions = parse_chatgpt_export(tmp_file)
             finally:
@@ -234,11 +266,13 @@ class ImportService:
 
         if imported > 0:
             await self.repo.upsert_import_history("chatgpt-export", owner_id, imported)
+        await self._mark_upload_imported(owner_id, "chatgpt-export", upload_id)
         return {"imported": imported, "skipped": skipped, "total": len(sessions)}
 
-    async def import_gemini_takeout(self, owner_id: str, takeout_path: str) -> dict:
+    async def import_gemini_takeout(self, owner_id: str, takeout_path: str, upload_id: str | None = None) -> dict:
         if self.s3:
-            tmp_dir, tmp_file = await self._s3_download_file(_S3_GEMINI_KEY)
+            upload_id = await self._resolve_upload_id(owner_id, "gemini-takeout", upload_id)
+            tmp_dir, tmp_file = await self._s3_download_file(self._s3_key(owner_id, upload_id, _S3_GEMINI_KEY))
             try:
                 sessions = parse_takeout(tmp_file)
             finally:
@@ -279,4 +313,5 @@ class ImportService:
 
         if imported > 0:
             await self.repo.upsert_import_history("gemini-takeout", owner_id, imported)
+        await self._mark_upload_imported(owner_id, "gemini-takeout", upload_id)
         return {"imported": imported, "skipped": skipped, "total": len(sessions)}
