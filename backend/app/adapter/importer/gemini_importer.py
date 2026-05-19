@@ -3,6 +3,7 @@
 
 import json
 import re
+from html import unescape
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -22,12 +23,12 @@ def _strip_html(html: str) -> str:
     html = re.sub(r'</?(p|h[1-6]|li|tr|br)\b[^>]*>', '\n', html, flags=re.IGNORECASE)
     html = re.sub(r'<[^>]+>', '', html)
     html = re.sub(r'\n{3,}', '\n\n', html)
-    return html.strip()
+    return unescape(html).strip()
 
 
 def _clean_title(raw: str) -> str:
     # Takeout이 모든 항목 제목 끝에 " 항목을 검색함"을 붙임 → 제거해서 실제 질문만 추출
-    return re.sub(r'\s*항목을 검색함\s*$', '', raw).strip()
+    return unescape(re.sub(r'\s*항목을 검색함\s*$', '', raw)).strip()
 
 
 def parse_takeout(path: Path) -> list[ParsedConversation]:

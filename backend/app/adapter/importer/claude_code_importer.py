@@ -25,6 +25,24 @@ def _parse_timestamp(ts: str) -> datetime:
         return datetime.now()
 
 
+def _extract_user_text(content) -> str:
+    if isinstance(content, str):
+        return content.strip()
+
+    if isinstance(content, list):
+        text_parts = [
+            block.get("text", "").strip()
+            for block in content
+            if isinstance(block, dict)
+            and block.get("type") == "text"
+            and isinstance(block.get("text"), str)
+            and block.get("text", "").strip()
+        ]
+        return "\n\n".join(text_parts)
+
+    return ""
+
+
 def parse_session(path: Path) -> ParsedConversation | None:
     messages = []
 
@@ -43,11 +61,12 @@ def parse_session(path: Path) -> ParsedConversation | None:
             if msg_type == "user":
                 content = obj.get("message", {}).get("content", "")
                 # list = tool_result → 순수 텍스트 메시지만 가져옴
-                if not isinstance(content, str) or not content.strip():
+                user_text = _extract_user_text(content)
+                if not user_text:
                     continue
                 messages.append({
                     "role": "user",
-                    "content": content.strip(),
+                    "content": user_text,
                     "created_at": _parse_timestamp(obj.get("timestamp", "")),
                 })
 
