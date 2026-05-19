@@ -7,11 +7,12 @@
 
 from dataclasses import asdict
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
 from motor.motor_asyncio import AsyncIOMotorDatabase
 from pydantic import BaseModel
 
 from app.adapter.mongodb.article_repository import ArticleRepository
+from app.adapter.mongodb.news_scrape_job_repository import NewsScrapeJobRepository
 from app.application.chat_service import OPENAI_PRICING
 from app.application.news_service import DEFAULT_MODEL, NewsService
 from app.core.auth import AuthUser, get_current_user
@@ -29,20 +30,53 @@ class AnalyzeRequest(BaseModel):
 
 
 def _get_svc(db: AsyncIOMotorDatabase = Depends(get_db)) -> NewsService:
-    return NewsService(ArticleRepository(db))
+    return NewsService(ArticleRepository(db), NewsScrapeJobRepository(db))
 
 
 @router.post("/scrape")
 async def scrape_news(
     body: ScrapeRequest,
+    background_tasks: BackgroundTasks,
     svc: NewsService = Depends(_get_svc),
     user: AuthUser = Depends(get_current_user),
 ):
     try:
-        articles, new_count = await svc.scrape(body.date, user.id)
+        job, started = await svc.start_scrape_job(body.date, user.id)
     except ValueError as e:
         raise HTTPException(status_code=422, detail=str(e))
-    return {"articles": [asdict(a) for a in articles], "new_count": new_count}
+    if started:
+        background_tasks.add_task(svc.run_scrape_job, job["id"], body.date, user.id)
+    articles = await svc.list_by_date(body.date, user.id)
+    return {
+        "articles": [asdict(a) for a in articles],
+        "new_count": job.get("inserted", 0),
+        "job": job,
+        "started": started,
+    }
+
+
+@router.get("/scrape/jobs/latest")
+async def get_latest_scrape_job(
+    date: str | None = None,
+    svc: NewsService = Depends(_get_svc),
+    user: AuthUser = Depends(get_current_user),
+):
+    job = await svc.get_latest_scrape_job(user.id, date)
+    if not job:
+        raise HTTPException(status_code=404, detail="Scrape job not found.")
+    return job
+
+
+@router.get("/scrape/jobs/{job_id}")
+async def get_scrape_job(
+    job_id: str,
+    svc: NewsService = Depends(_get_svc),
+    user: AuthUser = Depends(get_current_user),
+):
+    job = await svc.get_scrape_job(job_id, user.id)
+    if not job:
+        raise HTTPException(status_code=404, detail="Scrape job not found.")
+    return job
 
 
 @router.get("/dates")
