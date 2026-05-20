@@ -1,6 +1,6 @@
 # [API] 뉴스 스크래핑 및 기사 조회·분석 엔드포인트
 # GET  /news/models       — 분석에 사용 가능한 OpenAI 모델 목록 (가격 포함)
-# POST /news/scrape       — 날짜 지정 스크랩 (1~5면 자동 수집 + companies/tags 추출)
+# POST /news/scrape       — 날짜 지정 스크랩 (1~3면 자동 수집 + companies/tags 추출)
 # GET  /news              — 날짜별 기사 목록 (면, 기업명, 태그 포함)
 # GET  /news/{id}         — 기사 상세 (본문 전체)
 # POST /news/{id}/analyze — AI 전체 분석 생성 (model 선택 가능)

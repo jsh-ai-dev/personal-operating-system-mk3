@@ -19,7 +19,7 @@ class ArticleAnalysis:
 class Article:
     id: str
     date: str           # "2026-05-04"
-    page_num: int       # 1~5 (신문 면)
+    page_num: int       # 1~3 (신문 면)
     title: str
     url: str
     content: str

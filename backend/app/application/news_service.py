@@ -23,7 +23,7 @@ DEFAULT_MODEL = "gpt-5-mini"
 
 # 전자신문 oid (기본값)
 _DEFAULT_OID = "030"
-_ARTICLE_DELAY_RANGE_SECONDS = (10.0, 20.0)
+_ARTICLE_DELAY_RANGE_SECONDS = (5.0, 10.0)
 _REQUEST_MAX_ATTEMPTS = 3
 _RATE_LIMIT_COOLDOWN_MINUTES = 30
 
@@ -164,7 +164,7 @@ class NewsService:
     async def scrape(self, date: str, owner_id: str) -> tuple[list[Article], int]:
         """
         date 형식: "2026-05-04"
-        1~5면 기사를 수집하고 companies/tags를 자동 추출해 저장한다.
+        1~3면 기사를 수집하고 companies/tags를 자동 추출해 저장한다.
         이미 저장된 기사(url 중복)는 건너뛴다.
         반환: (전체 기사 목록, 새로 추가된 건수)
         """
@@ -263,6 +263,7 @@ class NewsService:
                     current_url=current_url,
                     message=f"Processing {processed + 1}/{len(links)}.",
                 )
+                await asyncio.sleep(random.uniform(*_ARTICLE_DELAY_RANGE_SECONDS))
 
                 if await self.repo.find_by_url(current_url, owner_id):
                     skipped_existing += 1
@@ -324,8 +325,6 @@ class NewsService:
                     skipped_existing=skipped_existing,
                     failed=failed,
                 )
-                await asyncio.sleep(random.uniform(*_ARTICLE_DELAY_RANGE_SECONDS))
-
             await self.job_repo.update(
                 job_id,
                 status="completed",

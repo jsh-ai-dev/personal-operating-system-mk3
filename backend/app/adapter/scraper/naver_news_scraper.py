@@ -12,8 +12,8 @@ _HEADERS = {
     "Accept-Language": "ko-KR,ko;q=0.9",
 }
 
-# 수집할 면 범위 (1~5면)
-_PAGE_RANGE = range(1, 6)
+# 수집할 면 범위 (1~3면)
+_PAGE_RANGE = range(1, 4)
 
 
 def _get(url: str) -> BeautifulSoup:
@@ -24,7 +24,7 @@ def _get(url: str) -> BeautifulSoup:
 
 def fetch_article_links(oid: str, date: str) -> list[dict]:
     """
-    신문지면 목록 페이지에서 1~5면 기사 링크를 수집한다.
+    신문지면 목록 페이지에서 1~3면 기사 링크를 수집한다.
     date 형식: "20260504"
     반환: [{"page_num": 1, "url": "https://...", "title": "..."}]
     """

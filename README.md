@@ -110,7 +110,7 @@ Claude.ai의 Cloudflare 봇 탐지를 우회하기 위해 일반 headless Playwr
 
 ### 6. AI 신문 스크랩 + 분석
 
-네이버 뉴스 신문지면(1~5면)을 날짜별로 수집하고, 면접 준비용으로 GPT가 핵심 기업·태그·요약·예상 질문을 추출합니다.
+네이버 뉴스 신문지면(1~3면)을 날짜별로 수집하고, 면접 준비용으로 GPT가 핵심 기업·태그·요약·예상 질문을 추출합니다.
 
 - 스크랩은 `requests + BeautifulSoup` (네이버 SSR이라 Playwright 불필요)
 - 분석은 사용자가 모델(`gpt-5-nano`/`mini`/`5`)을 선택해 트리거 — 토큰 한도 초과 시 명시적 RuntimeError로 잘림 방지
