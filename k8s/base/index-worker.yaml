@@ -1,35 +1,22 @@
-apiVersion: v1
-kind: Service
-metadata:
-  name: mk3-api
-spec:
-  selector:
-    app: mk3-api
-  ports:
-    - name: http
-      port: 8001
-      targetPort: 8001
----
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: mk3-api
+  name: mk3-index-worker
 spec:
   replicas: 1
   selector:
     matchLabels:
-      app: mk3-api
+      app: mk3-index-worker
   template:
     metadata:
       labels:
-        app: mk3-api
+        app: mk3-index-worker
     spec:
       containers:
-        - name: api
+        - name: index-worker
           image: personal-operating-system-mk3-api:latest
           imagePullPolicy: IfNotPresent
-          ports:
-            - containerPort: 8001
+          command: ["python", "-m", "app.workers.conversation_index_worker"]
           env:
             - name: MONGODB_URL
               valueFrom:
@@ -51,31 +38,11 @@ spec:
                 configMapKeyRef:
                   name: mk3-config
                   key: QDRANT_PORT
-            - name: CORS_ORIGINS
+            - name: QDRANT_API_KEY
               valueFrom:
-                configMapKeyRef:
-                  name: mk3-config
-                  key: CORS_ORIGINS
-            - name: AUTH_SERVICE_URL
-              valueFrom:
-                configMapKeyRef:
-                  name: mk3-config
-                  key: AUTH_SERVICE_URL
-            - name: AWS_REGION
-              valueFrom:
-                configMapKeyRef:
-                  name: mk3-config
-                  key: AWS_REGION
-            - name: S3_BUCKET
-              valueFrom:
-                configMapKeyRef:
-                  name: mk3-config
-                  key: S3_BUCKET
-            - name: S3_PREFIX
-              valueFrom:
-                configMapKeyRef:
-                  name: mk3-config
-                  key: S3_PREFIX
+                secretKeyRef:
+                  name: mk3-secret
+                  key: QDRANT_API_KEY
             - name: KAFKA_ENABLED
               valueFrom:
                 configMapKeyRef:
@@ -91,21 +58,16 @@ spec:
                 configMapKeyRef:
                   name: mk3-config
                   key: KAFKA_CONVERSATION_INDEX_TOPIC
+            - name: KAFKA_CONVERSATION_INDEX_GROUP_ID
+              valueFrom:
+                configMapKeyRef:
+                  name: mk3-config
+                  key: KAFKA_CONVERSATION_INDEX_GROUP_ID
             - name: OPENAI_API_KEY
               valueFrom:
                 secretKeyRef:
                   name: mk3-secret
                   key: OPENAI_API_KEY
-            - name: GEMINI_API_KEY
-              valueFrom:
-                secretKeyRef:
-                  name: mk3-secret
-                  key: GEMINI_API_KEY
-            - name: ANTHROPIC_API_KEY
-              valueFrom:
-                secretKeyRef:
-                  name: mk3-secret
-                  key: ANTHROPIC_API_KEY
           resources:
             requests:
               cpu: "100m"
@@ -113,15 +75,3 @@ spec:
             limits:
               cpu: "500m"
               memory: "512Mi"
-          readinessProbe:
-            httpGet:
-              path: /api/v1/health
-              port: 8001
-            initialDelaySeconds: 20
-            periodSeconds: 10
-          livenessProbe:
-            httpGet:
-              path: /api/v1/health
-              port: 8001
-            initialDelaySeconds: 40
-            periodSeconds: 20

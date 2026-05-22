@@ -13,3 +13,7 @@ data:
   AWS_REGION: "ap-northeast-2"
   S3_BUCKET: ""
   S3_PREFIX: ""
+  KAFKA_ENABLED: "false"
+  KAFKA_BOOTSTRAP_SERVERS: "localhost:9092"
+  KAFKA_CONVERSATION_INDEX_TOPIC: "mk3.conversation.index-requested.v1"
+  KAFKA_CONVERSATION_INDEX_GROUP_ID: "mk3-conversation-index-worker"

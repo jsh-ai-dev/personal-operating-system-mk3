@@ -5,6 +5,7 @@ from fastapi import Request
 from motor.motor_asyncio import AsyncIOMotorDatabase
 from qdrant_client import AsyncQdrantClient
 
+from app.application.conversation_index_events import ConversationIndexPublisher
 from app.core.config import settings
 
 
@@ -19,3 +20,7 @@ def get_db(request: Request) -> AsyncIOMotorDatabase:
 
 def get_qdrant(request: Request) -> AsyncQdrantClient:
     return request.app.state.qdrant
+
+
+def get_conversation_index_publisher(request: Request) -> ConversationIndexPublisher:
+    return request.app.state.conversation_index_publisher

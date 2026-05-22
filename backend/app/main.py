@@ -9,6 +9,10 @@ from motor.motor_asyncio import AsyncIOMotorClient
 from qdrant_client import AsyncQdrantClient
 
 from app.api.v1.router import router as v1_router
+from app.application.conversation_index_events import (
+    KafkaConversationIndexPublisher,
+    NoopConversationIndexPublisher,
+)
 from app.core.config import settings
 
 
@@ -23,7 +27,15 @@ async def lifespan(app: FastAPI):
         port=settings.qdrant_port,
         api_key=settings.qdrant_api_key,
     )
+    if settings.kafka_enabled:
+        app.state.conversation_index_publisher = KafkaConversationIndexPublisher(
+            bootstrap_servers=settings.kafka_bootstrap_servers,
+            topic=settings.kafka_conversation_index_topic,
+        )
+    else:
+        app.state.conversation_index_publisher = NoopConversationIndexPublisher()
     yield
+    await app.state.conversation_index_publisher.aclose()
     app.state.mongo.close()
     await app.state.qdrant.close()
 

@@ -52,6 +52,12 @@ class Settings(BaseSettings):
     # s3_prefix: 버킷 내 공통 상위 폴더 (예: "pos-mk3-import-data") — 비워두면 버킷 루트 사용
     s3_prefix: str = ""
 
+    # Kafka settings for background indexing workers.
+    kafka_enabled: bool = False
+    kafka_bootstrap_servers: str = "localhost:9092"
+    kafka_conversation_index_topic: str = "mk3.conversation.index-requested.v1"
+    kafka_conversation_index_group_id: str = "mk3-conversation-index-worker"
+
 
 # 모듈 로드 시 한 번만 생성 — 앱 전체에서 이 인스턴스를 임포트해 공유
 settings = Settings()

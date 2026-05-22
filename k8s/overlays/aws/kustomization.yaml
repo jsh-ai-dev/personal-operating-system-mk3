@@ -7,6 +7,7 @@ resources:
   - ../../base/namespace.yaml
   - ../../base/configmap.yaml
   - ../../base/api.yaml
+  - ../../base/index-worker.yaml
   - ../../base/web.yaml
   - ../../base/ingress.yaml
   - secret.aws.yaml

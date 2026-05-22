@@ -16,11 +16,12 @@ from qdrant_client import AsyncQdrantClient
 
 from app.adapter.mongodb.conversation_repository import ConversationRepository
 from app.adapter.qdrant.vector_repository import VectorRepository
+from app.application.conversation_index_events import ConversationIndexPublisher
 from app.application.import_service import ImportService, ImportUploadNotFound, ImportUploadRequired
 from app.application.search_service import SearchService
 from app.core.auth import AuthUser, get_current_user
 from app.core.config import settings
-from app.core.dependencies import get_db, get_qdrant
+from app.core.dependencies import get_conversation_index_publisher, get_db, get_qdrant
 from app.core.s3 import S3Client
 
 router = APIRouter(prefix="/import", tags=["import"])
@@ -62,6 +63,7 @@ async def _run_import(coro):
 def _get_svc(
     db: AsyncIOMotorDatabase = Depends(get_db),
     qdrant: AsyncQdrantClient = Depends(get_qdrant),
+    index_publisher: ConversationIndexPublisher = Depends(get_conversation_index_publisher),
 ) -> ImportService:
     # OpenAI 키가 없으면 search_svc=None → 임베딩 없이 임포트만 진행
     search_svc = None
@@ -81,7 +83,7 @@ def _get_svc(
             prefix=settings.s3_prefix,
         )
 
-    return ImportService(ConversationRepository(db), search_svc, s3)
+    return ImportService(ConversationRepository(db), search_svc, s3, index_publisher)
 
 
 @router.post("/jetbrains-codex")

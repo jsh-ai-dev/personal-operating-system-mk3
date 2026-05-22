@@ -75,7 +75,8 @@ CLAUDE_PRICING = {
 | Google Takeout | `내활동.json` | 시간 인접한 Q/A를 KST 기준으로 그룹핑해 대화 단위 복원 |
 
 - `source_id` 기반 중복 검사 — 같은 세션을 두 번 임포트해도 멱등 동작
-- 임포트 직후 `SearchService`로 자동 임베딩 → 즉시 의미 검색 가능
+- Kafka 사용 시 임포트 직후 `mk3.conversation.index-requested.v1` 이벤트 발행 → `mk3-index-worker`가 Qdrant 임베딩
+- Kafka 비활성 시 기존처럼 `SearchService`로 직접 임베딩
 - 파일은 로컬 `data/` 또는 S3 둘 다 지원, `S3_BUCKET` 설정 여부로 자동 분기
 
 ### 3. Qdrant 의미 검색
@@ -154,7 +155,7 @@ personal-operating-system-mk3/
 │
 ├─ .github/workflows/ecr-push.yml  # ECR matrix 빌드 → self-hosted runner에서 k3s rollout restart
 ├─ compose.yaml                    # api + web + mongodb + qdrant (로컬 학습용)
-├─ compose.data-box.yaml           # MongoDB + Qdrant만 분리 운영 (AWS data-box)
+├─ compose.data-box.yaml           # MongoDB + Qdrant + Kafka 분리 운영 (AWS data-box)
 ├─ Dockerfile.api / Dockerfile.web
 └─ dev.ps1                         # 로컬 일괄 기동 스크립트
 ```
@@ -264,15 +265,15 @@ npm run dev
 .\dev.ps1
 ```
 
-`dev.ps1`은 인프라(MongoDB/Qdrant)를 Docker Compose로 올리고 readiness를 확인한 뒤 백엔드/프론트를 함께 실행합니다.
+`dev.ps1`은 인프라(MongoDB/Qdrant)를 Docker Compose로 올리고 readiness를 확인한 뒤 백엔드/프론트를 함께 실행합니다. Kafka 기반 인덱싱은 `compose.yaml`의 `kafka`와 `index-worker` 서비스로 실행합니다.
 
 ## 배포와 운영 구성
 
 - **`Dockerfile.api`** / **`Dockerfile.web`**: 멀티 스테이지 빌드, FastAPI(uvicorn)와 Nuxt(node) 분리 이미지
-- **`compose.yaml`**: api + web + MongoDB + Qdrant 단일 로컬 스택
-- **`compose.data-box.yaml`**: 운영 환경에서 MongoDB/Qdrant만 별도 EC2(data-box)로 분리해 띄울 때 사용. 비밀번호 필수 환경변수(`:?`) 강제
+- **`compose.yaml`**: api + web + index-worker + MongoDB + Qdrant + Kafka 단일 로컬 스택
+- **`compose.data-box.yaml`**: 운영 환경에서 MongoDB/Qdrant/Kafka를 별도 EC2(data-box)로 분리해 띄울 때 사용. 비밀번호와 Kafka advertised host 필수 환경변수(`:?`) 강제
 - **`k8s/base`**: Namespace, ConfigMap, Secret, MongoDB, Qdrant, API, Web, Ingress
-- **`k8s/overlays/aws`**: 외부 MongoDB/Qdrant 연결 전제, ECR 이미지 매핑, AWS 도메인용 ingress 패치
+- **`k8s/overlays/aws`**: 외부 MongoDB/Qdrant/Kafka 연결 전제, API/Web/worker ECR 이미지 매핑, AWS 도메인용 ingress 패치
 - **`.github/workflows/ecr-push.yml`**: OIDC(`AWS_ROLE_TO_ASSUME`)로 AWS 자격 증명 발급 → matrix로 api/web 동시 빌드 → ECR push → self-hosted runner에서 `kubectl rollout restart`로 무중단 배포
 
 ## 설계 메모

@@ -12,3 +12,7 @@ data:
   S3_BUCKET: "jsh-ai-dev-s3-bucket"
   S3_PREFIX: "pos-mk3-import-data"
   AWS_REGION: "ap-northeast-2"
+  KAFKA_ENABLED: "true"
+  KAFKA_BOOTSTRAP_SERVERS: "10.20.17.124:9092"
+  KAFKA_CONVERSATION_INDEX_TOPIC: "mk3.conversation.index-requested.v1"
+  KAFKA_CONVERSATION_INDEX_GROUP_ID: "mk3-conversation-index-worker"

@@ -3,7 +3,7 @@
 This setup keeps `mk3` practical for learning and AWS deployment:
 
 - local/base includes MongoDB + Qdrant + mk3 API + mk3 Web
-- AWS overlay assumes MongoDB/Qdrant are managed externally and runs mk3 API/Web on EKS
+- AWS overlay assumes MongoDB/Qdrant/Kafka are managed externally and runs mk3 API/Web/worker on EKS
 
 ## Included
 
@@ -13,6 +13,7 @@ This setup keeps `mk3` practical for learning and AWS deployment:
 - `Qdrant` (Deployment + PVC + Service)
 - `API` (Deployment + Service)
 - `Web` (Deployment + Service)
+- `Index Worker` (AWS overlay only, Kafka consumer)
 - `Ingress`
 
 ## Apply (base)
@@ -32,7 +33,7 @@ kubectl -n pos-mk3 get all
 
 ## AWS overlay
 
-Use this when MongoDB/Qdrant are external (MongoDB Atlas or self-managed, Qdrant Cloud or external service).
+Use this when MongoDB/Qdrant/Kafka are external.
 
 1) Prepare overlay secret:
 
@@ -57,7 +58,7 @@ docker build -f Dockerfile.api -t personal-operating-system-mk3-api:latest .
 docker build -f Dockerfile.web -t personal-operating-system-mk3-web:latest .
 ```
 
-## MongoDB/Qdrant on data-box (compose)
+## MongoDB/Qdrant/Kafka on data-box (compose)
 
 Use this from the `mk3` repository on your data-box EC2:
 

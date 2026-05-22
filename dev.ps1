@@ -39,13 +39,24 @@ if (-not (Get-Command docker -ErrorAction SilentlyContinue)) {
 }
 
 Write-Host "Starting mk3 infrastructure..."
-& docker compose -f (Join-Path $rootPath "compose.yaml") up -d mongodb qdrant
+& docker compose -f (Join-Path $rootPath "compose.yaml") up -d mongodb qdrant kafka
 if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
 Write-Host ""
 Write-Host "Waiting for mk3 infrastructure..."
 Wait-DockerContainer -Name "personal-operating-system-mk3-mongodb"
 Wait-DockerContainer -Name "personal-operating-system-mk3-qdrant"
+Wait-DockerContainer -Name "personal-operating-system-mk3-kafka"
+
+Write-Host "Ensuring mk3 Kafka topics..."
+& docker exec personal-operating-system-mk3-kafka /opt/kafka/bin/kafka-topics.sh `
+    --bootstrap-server kafka:9092 `
+    --create `
+    --if-not-exists `
+    --topic mk3.conversation.index-requested.v1 `
+    --partitions 1 `
+    --replication-factor 1 | Out-Host
+if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
 $backendPath = Join-Path $rootPath "backend"
 $frontendPath = Join-Path $rootPath "frontend"
@@ -53,10 +64,11 @@ $venvPython = Join-Path $rootPath ".venv\Scripts\python.exe"
 $pythonCommand = if (Test-Path $venvPython) { $venvPython } else { "python" }
 
 Write-Host ""
-Write-Host "Starting mk3 api/web..."
+Write-Host "Starting mk3 api/web/index-worker..."
 Write-Host "  [api] $pythonCommand -m uvicorn app.main:app --reload --port 8001"
+Write-Host "  [index-worker] $pythonCommand -m app.workers.conversation_index_worker"
 Write-Host "  [web] npm run dev"
-Write-Host "Press Ctrl+C to stop both mk3 app processes."
+Write-Host "Press Ctrl+C to stop mk3 app processes."
 Write-Host ""
 
 $jobs = @()
@@ -64,13 +76,36 @@ try {
     $jobs += Start-Job -Name "api" -ScriptBlock {
         param($WorkingDirectory, $PythonCommand)
         Set-Location $WorkingDirectory
+        $env:KAFKA_ENABLED = "true"
+        $env:KAFKA_BOOTSTRAP_SERVERS = "localhost:9092"
+        $env:KAFKA_CONVERSATION_INDEX_TOPIC = "mk3.conversation.index-requested.v1"
         & $PythonCommand -m uvicorn app.main:app --reload --port 8001 2>&1
+        if ($LASTEXITCODE -ne 0) {
+            throw "api exited with code $LASTEXITCODE"
+        }
+    } -ArgumentList $backendPath, $pythonCommand
+
+    $jobs += Start-Job -Name "index-worker" -ScriptBlock {
+        param($WorkingDirectory, $PythonCommand)
+        Set-Location $WorkingDirectory
+        $env:KAFKA_ENABLED = "true"
+        $env:KAFKA_BOOTSTRAP_SERVERS = "localhost:9092"
+        $env:KAFKA_CONVERSATION_INDEX_TOPIC = "mk3.conversation.index-requested.v1"
+        $env:KAFKA_CONVERSATION_INDEX_GROUP_ID = "mk3-conversation-index-worker"
+        & $PythonCommand -m app.workers.conversation_index_worker 2>&1
+        if ($LASTEXITCODE -ne 0) {
+            throw "index-worker exited with code $LASTEXITCODE"
+        }
+        throw "index-worker exited unexpectedly."
     } -ArgumentList $backendPath, $pythonCommand
 
     $jobs += Start-Job -Name "web" -ScriptBlock {
         param($WorkingDirectory)
         Set-Location $WorkingDirectory
         npm run dev 2>&1
+        if ($LASTEXITCODE -ne 0) {
+            throw "web exited with code $LASTEXITCODE"
+        }
     } -ArgumentList $frontendPath
 
     while ($true) {
@@ -84,6 +119,14 @@ try {
                 Receive-PrefixedJob -Job $job
             }
             throw "mk3 dev process '$($failed[0].Name)' failed."
+        }
+
+        $stopped = $jobs | Where-Object { $_.State -ne "Running" }
+        if ($stopped) {
+            foreach ($job in $stopped) {
+                Receive-PrefixedJob -Job $job
+            }
+            throw "mk3 dev process '$($stopped[0].Name)' stopped unexpectedly with state '$($stopped[0].State)'."
         }
 
         $running = $jobs | Where-Object { $_.State -eq "Running" }

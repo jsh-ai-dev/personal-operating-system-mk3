@@ -15,6 +15,7 @@ from app.adapter.importer.claude_importer import parse_export as parse_claude_ex
 from app.adapter.importer.gemini_importer import parse_takeout
 from app.adapter.importer.jetbrains_codex_importer import scan_sessions
 from app.adapter.mongodb.conversation_repository import ConversationRepository
+from app.application.conversation_index_events import ConversationIndexPublisher
 
 logger = logging.getLogger(__name__)
 
@@ -35,13 +36,20 @@ class ImportUploadNotFound(Exception):
 
 
 class ImportService:
-    def __init__(self, repo: ConversationRepository, search_svc=None, s3=None):
+    def __init__(
+        self,
+        repo: ConversationRepository,
+        search_svc=None,
+        s3=None,
+        index_publisher: ConversationIndexPublisher | None = None,
+    ):
         self.repo = repo
         self.search_svc = search_svc
         # search_svc는 선택적 의존성 — OpenAI 키가 없는 환경에서도 임포트는 동작해야 함
         self.search_svc = search_svc
         # s3는 선택적 의존성 — None이면 로컬 data/ 경로에서 읽음
         self.s3 = s3
+        self.index_publisher = index_publisher
 
     def _s3_key(self, owner_id: str, upload_id: str, key: str) -> str:
         return f"imports/{quote(owner_id, safe='')}/{upload_id}/{key}"
@@ -59,6 +67,19 @@ class ImportService:
             await self.repo.mark_import_upload_imported(owner_id, service, upload_id)
 
     async def _try_embed(self, conversation_id: str, owner_id: str) -> None:
+        if self.index_publisher:
+            try:
+                published = await self.index_publisher.publish_index_requested(
+                    conversation_id=conversation_id,
+                    owner_id=owner_id,
+                    reason="imported",
+                )
+                if published:
+                    return
+            except Exception as e:
+                logger.warning("publish index event failed for %s: %s", conversation_id, e)
+                return
+
         if not self.search_svc:
             return
         try:
