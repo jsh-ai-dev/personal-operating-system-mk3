@@ -1,11 +1,12 @@
-# [API] 뉴스 스크래핑 및 기사 조회·분석 엔드포인트
-# GET  /news/models       — 분석에 사용 가능한 OpenAI 모델 목록 (가격 포함)
-# POST /news/scrape       — 날짜 지정 스크랩 (1~3면 자동 수집 + companies/tags 추출)
-# GET  /news              — 날짜별 기사 목록 (면, 기업명, 태그 포함)
-# GET  /news/{id}         — 기사 상세 (본문 전체)
-# POST /news/{id}/analyze — AI 전체 분석 생성 (model 선택 가능)
+﻿# [API] 뉴스 스크래핑 및 기사 조회/분석 엔드포인트
+# GET  /news/models       - 분석에 사용 가능한 OpenAI 모델 목록
+# POST /news/scrape       - 날짜 지정 스크랩 job 생성 후 Kafka 이벤트 발행
+# GET  /news              - 날짜/기업/태그 기준 기사 목록
+# GET  /news/{id}         - 기사 상세
+# POST /news/{id}/analyze - AI 분석 Kafka 이벤트 발행
 
 from dataclasses import asdict
+import logging
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
 from motor.motor_asyncio import AsyncIOMotorDatabase
@@ -14,15 +15,17 @@ from pydantic import BaseModel
 from app.adapter.mongodb.article_repository import ArticleRepository
 from app.adapter.mongodb.news_scrape_job_repository import NewsScrapeJobRepository
 from app.application.chat_service import OPENAI_PRICING
+from app.application.news_events import NewsEventPublisher
 from app.application.news_service import DEFAULT_MODEL, NewsService
 from app.core.auth import AuthUser, get_current_user
-from app.core.dependencies import get_db
+from app.core.dependencies import get_db, get_news_event_publisher
 
 router = APIRouter(prefix="/news", tags=["news"])
+logger = logging.getLogger(__name__)
 
 
 class ScrapeRequest(BaseModel):
-    date: str  # "2026-05-04"
+    date: str
 
 
 class AnalyzeRequest(BaseModel):
@@ -38,14 +41,23 @@ async def scrape_news(
     body: ScrapeRequest,
     background_tasks: BackgroundTasks,
     svc: NewsService = Depends(_get_svc),
+    news_publisher: NewsEventPublisher = Depends(get_news_event_publisher),
     user: AuthUser = Depends(get_current_user),
 ):
     try:
         job, started = await svc.start_scrape_job(body.date, user.id)
     except ValueError as e:
-        raise HTTPException(status_code=422, detail=str(e))
+        raise HTTPException(status_code=422, detail=str(e)) from e
+
     if started:
-        background_tasks.add_task(svc.run_scrape_job, job["id"], body.date, user.id)
+        try:
+            published = await news_publisher.publish_scrape_requested(job["id"], body.date, user.id)
+        except Exception as e:
+            logger.warning("publish news scrape event failed for job %s: %s", job["id"], e)
+            published = False
+        if not published:
+            background_tasks.add_task(svc.run_scrape_job, job["id"], body.date, user.id)
+
     articles = await svc.list_by_date(body.date, user.id)
     return {
         "articles": [asdict(a) for a in articles],
@@ -84,7 +96,6 @@ async def get_news_dates(
     svc: NewsService = Depends(_get_svc),
     user: AuthUser = Depends(get_current_user),
 ):
-    """기사가 존재하는 날짜 목록 반환 (최신순)"""
     return await svc.repo.find_all_dates(user.id)
 
 
@@ -96,7 +107,6 @@ async def list_news(
     svc: NewsService = Depends(_get_svc),
     user: AuthUser = Depends(get_current_user),
 ):
-    # company 또는 tag가 있으면 전체 기간 검색, 없으면 날짜 기준 조회
     if company or tag:
         articles = await svc.list_by_filter(user.id, company, tag)
     elif date:
@@ -111,13 +121,11 @@ async def get_filter_options(
     svc: NewsService = Depends(_get_svc),
     user: AuthUser = Depends(get_current_user),
 ):
-    """전체 기간에 걸쳐 분석된 기업명·태그 목록 반환 (필터 드롭다운용)"""
     return await svc.get_filter_options(user.id)
 
 
 @router.get("/models")
 async def get_news_models():
-    """뉴스 분석에 사용할 수 있는 OpenAI 모델 목록과 가격 반환"""
     models = [
         {"id": model_id, "input_per_1m": p["input"], "output_per_1m": p["output"]}
         for model_id, p in OPENAI_PRICING.items()
@@ -142,11 +150,25 @@ async def analyze_news(
     id: str,
     body: AnalyzeRequest,
     svc: NewsService = Depends(_get_svc),
+    news_publisher: NewsEventPublisher = Depends(get_news_event_publisher),
     user: AuthUser = Depends(get_current_user),
 ):
     if body.model not in OPENAI_PRICING:
         raise HTTPException(status_code=400, detail=f"지원하지 않는 모델: {body.model}")
-    article = await svc.analyze(id, user.id, body.model)
+
+    article = await svc.get(id, user.id)
     if not article:
         raise HTTPException(status_code=404, detail="기사를 찾을 수 없습니다.")
+
+    try:
+        published = await news_publisher.publish_analysis_requested(id, user.id, body.model)
+    except Exception as e:
+        logger.warning("publish news analysis event failed for article %s: %s", id, e)
+        published = False
+
+    if not published:
+        article = await svc.analyze(id, user.id, body.model)
+        if not article:
+            raise HTTPException(status_code=404, detail="기사를 찾을 수 없습니다.")
+
     return asdict(article)

@@ -30,11 +30,17 @@ export interface Article {
   analysis: ArticleAnalysis | null
 }
 
+export interface NewsScrapeResponse {
+  articles: Article[]
+  new_count: number
+  started: boolean
+}
+
 export const useNews = () => {
   const api = useApi()
 
   const scrape = (date: string) =>
-    api<Article[]>('/api/v1/news/scrape', { method: 'POST', body: { date } })
+    api<NewsScrapeResponse>('/api/v1/news/scrape', { method: 'POST', body: { date } })
 
   const list = (params: { date?: string; company?: string; tag?: string }) =>
     api<Article[]>('/api/v1/news', { query: params })

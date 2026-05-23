@@ -91,6 +91,16 @@ spec:
                 configMapKeyRef:
                   name: mk3-config
                   key: KAFKA_CONVERSATION_INDEX_TOPIC
+            - name: KAFKA_NEWS_SCRAPE_TOPIC
+              valueFrom:
+                configMapKeyRef:
+                  name: mk3-config
+                  key: KAFKA_NEWS_SCRAPE_TOPIC
+            - name: KAFKA_NEWS_ANALYSIS_TOPIC
+              valueFrom:
+                configMapKeyRef:
+                  name: mk3-config
+                  key: KAFKA_NEWS_ANALYSIS_TOPIC
             - name: OPENAI_API_KEY
               valueFrom:
                 secretKeyRef:

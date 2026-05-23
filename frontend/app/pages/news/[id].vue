@@ -18,6 +18,19 @@ const selectedModel = ref('gpt-5-mini')
 const analyzing = ref(false)
 const error = ref('')
 
+const wait = (ms: number) => new Promise(resolve => window.setTimeout(resolve, ms))
+
+const waitForAnalysis = async (previousAnalyzedAt: string) => {
+  for (let i = 0; i < 45; i += 1) {
+    await wait(2000)
+    const latest = await get(id)
+    if (latest.analysis && latest.analysis.analyzed_at !== previousAnalyzedAt) {
+      return latest
+    }
+  }
+  throw new Error('Analysis did not finish in time.')
+}
+
 onMounted(async () => {
   try {
     models.value = await getModels()
@@ -28,8 +41,12 @@ const onAnalyze = async () => {
   analyzing.value = true
   error.value = ''
   try {
+    const previousAnalyzedAt = article.value?.analysis?.analyzed_at ?? ''
     const updated = await analyze(id, selectedModel.value)
     article.value = updated
+    if (!updated.analysis || updated.analysis.analyzed_at === previousAnalyzedAt) {
+      article.value = await waitForAnalysis(previousAnalyzedAt)
+    }
   } catch (e: any) {
     error.value = e.data?.detail ?? '분석 중 오류가 발생했습니다.'
   } finally {

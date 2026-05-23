@@ -79,7 +79,8 @@ const onScrape = async () => {
   scraping.value = true
   error.value = ''
   try {
-    articles.value = await scrape(selectedDate.value)
+    const result = await scrape(selectedDate.value)
+    articles.value = result.articles
     // 스크랩 후 분석이 완료되면 새 기업/태그가 생길 수 있으므로 옵션 갱신
     await loadFilterOptions()
   } catch (e: any) {

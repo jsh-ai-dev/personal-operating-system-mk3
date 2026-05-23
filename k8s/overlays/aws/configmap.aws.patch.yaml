@@ -16,3 +16,6 @@ data:
   KAFKA_BOOTSTRAP_SERVERS: "10.20.17.124:9092"
   KAFKA_CONVERSATION_INDEX_TOPIC: "mk3.conversation.index-requested.v1"
   KAFKA_CONVERSATION_INDEX_GROUP_ID: "mk3-conversation-index-worker"
+  KAFKA_NEWS_SCRAPE_TOPIC: "mk3.news.scrape-requested.v1"
+  KAFKA_NEWS_ANALYSIS_TOPIC: "mk3.news.analysis-requested.v1"
+  KAFKA_NEWS_GROUP_ID: "mk3-news-worker"

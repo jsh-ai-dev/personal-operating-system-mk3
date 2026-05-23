@@ -13,6 +13,7 @@ from app.application.conversation_index_events import (
     KafkaConversationIndexPublisher,
     NoopConversationIndexPublisher,
 )
+from app.application.news_events import KafkaNewsEventPublisher, NoopNewsEventPublisher
 from app.core.config import settings
 
 
@@ -32,10 +33,17 @@ async def lifespan(app: FastAPI):
             bootstrap_servers=settings.kafka_bootstrap_servers,
             topic=settings.kafka_conversation_index_topic,
         )
+        app.state.news_event_publisher = KafkaNewsEventPublisher(
+            bootstrap_servers=settings.kafka_bootstrap_servers,
+            scrape_topic=settings.kafka_news_scrape_topic,
+            analysis_topic=settings.kafka_news_analysis_topic,
+        )
     else:
         app.state.conversation_index_publisher = NoopConversationIndexPublisher()
+        app.state.news_event_publisher = NoopNewsEventPublisher()
     yield
     await app.state.conversation_index_publisher.aclose()
+    await app.state.news_event_publisher.aclose()
     app.state.mongo.close()
     await app.state.qdrant.close()
 

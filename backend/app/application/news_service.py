@@ -370,7 +370,7 @@ class NewsService:
         if not article:
             return None
 
-        data = _analyze(article.title, article.content, model)
+        data = await asyncio.to_thread(_analyze, article.title, article.content, model)
 
         companies = data.pop("companies", [])
         tags = data.pop("tags", [])

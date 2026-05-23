@@ -57,6 +57,22 @@ Write-Host "Ensuring mk3 Kafka topics..."
     --partitions 1 `
     --replication-factor 1 | Out-Host
 if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+& docker exec personal-operating-system-mk3-kafka /opt/kafka/bin/kafka-topics.sh `
+    --bootstrap-server kafka:9092 `
+    --create `
+    --if-not-exists `
+    --topic mk3.news.scrape-requested.v1 `
+    --partitions 1 `
+    --replication-factor 1 | Out-Host
+if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+& docker exec personal-operating-system-mk3-kafka /opt/kafka/bin/kafka-topics.sh `
+    --bootstrap-server kafka:9092 `
+    --create `
+    --if-not-exists `
+    --topic mk3.news.analysis-requested.v1 `
+    --partitions 1 `
+    --replication-factor 1 | Out-Host
+if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
 $backendPath = Join-Path $rootPath "backend"
 $frontendPath = Join-Path $rootPath "frontend"
@@ -64,9 +80,10 @@ $venvPython = Join-Path $rootPath ".venv\Scripts\python.exe"
 $pythonCommand = if (Test-Path $venvPython) { $venvPython } else { "python" }
 
 Write-Host ""
-Write-Host "Starting mk3 api/web/index-worker..."
+Write-Host "Starting mk3 api/web/index-worker/news-worker..."
 Write-Host "  [api] $pythonCommand -m uvicorn app.main:app --reload --port 8001"
 Write-Host "  [index-worker] $pythonCommand -m app.workers.conversation_index_worker"
+Write-Host "  [news-worker] $pythonCommand -m app.workers.news_worker"
 Write-Host "  [web] npm run dev"
 Write-Host "Press Ctrl+C to stop mk3 app processes."
 Write-Host ""
@@ -79,6 +96,8 @@ try {
         $env:KAFKA_ENABLED = "true"
         $env:KAFKA_BOOTSTRAP_SERVERS = "localhost:9092"
         $env:KAFKA_CONVERSATION_INDEX_TOPIC = "mk3.conversation.index-requested.v1"
+        $env:KAFKA_NEWS_SCRAPE_TOPIC = "mk3.news.scrape-requested.v1"
+        $env:KAFKA_NEWS_ANALYSIS_TOPIC = "mk3.news.analysis-requested.v1"
         & $PythonCommand -m uvicorn app.main:app --reload --port 8001 2>&1
         if ($LASTEXITCODE -ne 0) {
             throw "api exited with code $LASTEXITCODE"
@@ -97,6 +116,21 @@ try {
             throw "index-worker exited with code $LASTEXITCODE"
         }
         throw "index-worker exited unexpectedly."
+    } -ArgumentList $backendPath, $pythonCommand
+
+    $jobs += Start-Job -Name "news-worker" -ScriptBlock {
+        param($WorkingDirectory, $PythonCommand)
+        Set-Location $WorkingDirectory
+        $env:KAFKA_ENABLED = "true"
+        $env:KAFKA_BOOTSTRAP_SERVERS = "localhost:9092"
+        $env:KAFKA_NEWS_SCRAPE_TOPIC = "mk3.news.scrape-requested.v1"
+        $env:KAFKA_NEWS_ANALYSIS_TOPIC = "mk3.news.analysis-requested.v1"
+        $env:KAFKA_NEWS_GROUP_ID = "mk3-news-worker"
+        & $PythonCommand -m app.workers.news_worker 2>&1
+        if ($LASTEXITCODE -ne 0) {
+            throw "news-worker exited with code $LASTEXITCODE"
+        }
+        throw "news-worker exited unexpectedly."
     } -ArgumentList $backendPath, $pythonCommand
 
     $jobs += Start-Job -Name "web" -ScriptBlock {

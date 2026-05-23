@@ -6,6 +6,7 @@ from motor.motor_asyncio import AsyncIOMotorDatabase
 from qdrant_client import AsyncQdrantClient
 
 from app.application.conversation_index_events import ConversationIndexPublisher
+from app.application.news_events import NewsEventPublisher
 from app.core.config import settings
 
 
@@ -24,3 +25,7 @@ def get_qdrant(request: Request) -> AsyncQdrantClient:
 
 def get_conversation_index_publisher(request: Request) -> ConversationIndexPublisher:
     return request.app.state.conversation_index_publisher
+
+
+def get_news_event_publisher(request: Request) -> NewsEventPublisher:
+    return request.app.state.news_event_publisher

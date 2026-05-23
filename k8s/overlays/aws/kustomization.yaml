@@ -8,6 +8,7 @@ resources:
   - ../../base/configmap.yaml
   - ../../base/api.yaml
   - ../../base/index-worker.yaml
+  - ../../base/news-worker.yaml
   - ../../base/web.yaml
   - ../../base/ingress.yaml
   - secret.aws.yaml

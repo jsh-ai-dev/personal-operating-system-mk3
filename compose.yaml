@@ -18,6 +18,8 @@ services:
       KAFKA_ENABLED: ${KAFKA_ENABLED:-true}
       KAFKA_BOOTSTRAP_SERVERS: kafka:9092
       KAFKA_CONVERSATION_INDEX_TOPIC: ${KAFKA_CONVERSATION_INDEX_TOPIC:-mk3.conversation.index-requested.v1}
+      KAFKA_NEWS_SCRAPE_TOPIC: ${KAFKA_NEWS_SCRAPE_TOPIC:-mk3.news.scrape-requested.v1}
+      KAFKA_NEWS_ANALYSIS_TOPIC: ${KAFKA_NEWS_ANALYSIS_TOPIC:-mk3.news.analysis-requested.v1}
       # 컨테이너 내부에서 mk2 auth-service(호스트:3002)로 접근
       AUTH_SERVICE_URL: http://host.docker.internal:3002
     ports:
@@ -53,6 +55,30 @@ services:
       mongodb:
         condition: service_healthy
       qdrant:
+        condition: service_healthy
+      kafka:
+        condition: service_started
+    restart: unless-stopped
+
+  news-worker:
+    build:
+      context: .
+      dockerfile: Dockerfile.api
+    image: personal-operating-system-mk3-api:latest
+    container_name: personal-operating-system-mk3-news-worker
+    env_file:
+      - backend/.env
+    environment:
+      MONGODB_URL: mongodb://${MK3_MONGO_USERNAME:-pos}:${MK3_MONGO_PASSWORD:-pos}@mongodb:27017
+      MONGODB_DB: ${MK3_MONGO_DB:-pos_mk3}
+      KAFKA_ENABLED: ${KAFKA_ENABLED:-true}
+      KAFKA_BOOTSTRAP_SERVERS: kafka:9092
+      KAFKA_NEWS_SCRAPE_TOPIC: ${KAFKA_NEWS_SCRAPE_TOPIC:-mk3.news.scrape-requested.v1}
+      KAFKA_NEWS_ANALYSIS_TOPIC: ${KAFKA_NEWS_ANALYSIS_TOPIC:-mk3.news.analysis-requested.v1}
+      KAFKA_NEWS_GROUP_ID: ${KAFKA_NEWS_GROUP_ID:-mk3-news-worker}
+    command: ["python", "-m", "app.workers.news_worker"]
+    depends_on:
+      mongodb:
         condition: service_healthy
       kafka:
         condition: service_started

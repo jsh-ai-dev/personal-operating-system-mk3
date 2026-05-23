@@ -57,6 +57,9 @@ class Settings(BaseSettings):
     kafka_bootstrap_servers: str = "localhost:9092"
     kafka_conversation_index_topic: str = "mk3.conversation.index-requested.v1"
     kafka_conversation_index_group_id: str = "mk3-conversation-index-worker"
+    kafka_news_scrape_topic: str = "mk3.news.scrape-requested.v1"
+    kafka_news_analysis_topic: str = "mk3.news.analysis-requested.v1"
+    kafka_news_group_id: str = "mk3-news-worker"
 
 
 # 모듈 로드 시 한 번만 생성 — 앱 전체에서 이 인스턴스를 임포트해 공유

@@ -1,0 +1,67 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mk3-news-worker
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: mk3-news-worker
+  template:
+    metadata:
+      labels:
+        app: mk3-news-worker
+    spec:
+      containers:
+        - name: news-worker
+          image: personal-operating-system-mk3-api:latest
+          imagePullPolicy: IfNotPresent
+          command: ["python", "-m", "app.workers.news_worker"]
+          env:
+            - name: MONGODB_URL
+              valueFrom:
+                secretKeyRef:
+                  name: mk3-secret
+                  key: MONGODB_URL
+            - name: MONGODB_DB
+              valueFrom:
+                configMapKeyRef:
+                  name: mk3-config
+                  key: MONGODB_DB
+            - name: KAFKA_ENABLED
+              valueFrom:
+                configMapKeyRef:
+                  name: mk3-config
+                  key: KAFKA_ENABLED
+            - name: KAFKA_BOOTSTRAP_SERVERS
+              valueFrom:
+                configMapKeyRef:
+                  name: mk3-config
+                  key: KAFKA_BOOTSTRAP_SERVERS
+            - name: KAFKA_NEWS_SCRAPE_TOPIC
+              valueFrom:
+                configMapKeyRef:
+                  name: mk3-config
+                  key: KAFKA_NEWS_SCRAPE_TOPIC
+            - name: KAFKA_NEWS_ANALYSIS_TOPIC
+              valueFrom:
+                configMapKeyRef:
+                  name: mk3-config
+                  key: KAFKA_NEWS_ANALYSIS_TOPIC
+            - name: KAFKA_NEWS_GROUP_ID
+              valueFrom:
+                configMapKeyRef:
+                  name: mk3-config
+                  key: KAFKA_NEWS_GROUP_ID
+            - name: OPENAI_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: mk3-secret
+                  key: OPENAI_API_KEY
+          resources:
+            requests:
+              cpu: "100m"
+              memory: "256Mi"
+            limits:
+              cpu: "500m"
+              memory: "512Mi"
