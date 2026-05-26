@@ -1,8 +1,8 @@
 # Personal Operating System mk3
 
-`mk3`는 Personal Operating System의 AI 데이터 백엔드입니다. 여러 LLM 서비스의 대화 export를 가져와 MongoDB에 저장하고, Qdrant 벡터 검색, AI 요약/퀴즈, SSE 채팅, AI 뉴스 분석, 구독 서비스 사용량 스크래핑을 제공합니다.
+`mk3`는 Personal Operating System의 AI 데이터 백엔드입니다. 여러 LLM 서비스의 대화 내역을 가져와 MongoDB에 저장하고, AI 채팅, 요약, 검색, 퀴즈, 뉴스 분석, 구독 서비스 사용량 스크래핑을 제공합니다.
 
-실사용 메인 화면은 `mk2`의 Next.js 앱입니다. `mk3`는 FastAPI API를 제공하고, 포함된 Nuxt 앱은 보조 UI와 기능 실험용으로 유지됩니다.
+실사용 메인 화면은 `mk2`의 Next.js에서 담당합니다. `mk3`는 FastAPI API를 제공하며, 포함된 Nuxt 화면은 일부 기능 확인과 학습용으로 유지합니다.
 
 ## 시스템 구조
 
@@ -11,46 +11,49 @@ mk2 Next.js BFF :3000
   └─ /api/mk3/*  ->  mk3 FastAPI :8001
 
 mk3 FastAPI
-  ├─ MongoDB      # 대화, 메시지, 기사, AI 서비스, import history
+  ├─ MongoDB      # 대화, 메시지, 뉴스, AI 서비스, import 이력
   ├─ Qdrant       # 대화 임베딩 벡터 검색
   ├─ Kafka        # import 이후 재색인, 뉴스 스크랩/분석 비동기 작업
-  ├─ External AI  # OpenAI, Anthropic, Google Gemini
-  ├─ Chrome CDP   # ChatGPT, Codex, Claude, Gemini, Cursor 사용량 스크래핑
+  ├─ External AI  # OpenAI, Anthropic, Gemini
+  ├─ Chrome CDP   # ChatGPT, Codex, Claude, Claude Code, Cursor 사용량 스크래핑
   └─ S3 optional  # export 파일 업로드/import 저장소
 ```
 
-인증은 직접 JWT를 해석하지 않고 mk2 auth-service의 `/api/auth/me`에 위임합니다. 모든 주요 쿼리는 `owner_id`를 조건으로 사용해 사용자별 데이터를 분리합니다.
+mk2 auth-service의 `/api/auth/me`로 JWT를 검증하고, `owner_id` 기준으로 사용자별 데이터를 분리합니다.
 
 ## 기능
 
+### AI 서비스 Dashboard
+
+- ChatGPT, Codex, Claude, Claude Code, Gemini, Cursor 등 구독 서비스 현황 갱신
+- 실제 Chrome 세션에 CDP로 붙어 사용량/결제 정보를 스크래핑
+
 ### LLM 채팅
 
-- OpenAI, Gemini, Claude API를 SSE로 스트리밍
-- 대화와 메시지 저장, 숨김 처리, 수정, 삭제
+- OpenAI, Claude, Gemini API를 SSE로 스트리밍
+- 대화, 숨김 처리, 수정, 삭제
 - assistant 메시지별 모델, 토큰, 예상 비용 저장
-- provider별 모델 목록과 가격/제한 정보 제공
+- provider별 모델 목록과 가격 정보 제공
 
 ### 대화 import
 
-지원 소스:
+| 서비스       | 파일                  |
+|-------------|----------------------|
+| ChatGPT     | `conversations.json` |
+| Codex       | `.events` files      |
+| Claude      | `conversations.json` |
+| Claude Code | `.jsonl` files       |
+| Gemini      | `내활동.json`         |
 
-| 소스 | 입력 |
-|---|---|
-| ChatGPT export | `conversations.json` |
-| Claude.ai export | `conversations.json` |
-| Claude Code | `.jsonl` transcript 디렉터리 |
-| JetBrains Codex | `.events` 파일 |
-| Gemini Takeout | Google Takeout JSON |
-
-`source_id` 기반으로 중복 import를 건너뛰며, import 직후 OpenAI API key가 있으면 Qdrant 임베딩까지 진행합니다. Kafka가 켜져 있으면 `mk3.conversation.index-requested.v1` 이벤트로 index worker가 처리하고, 꺼져 있으면 요청 흐름에서 직접 처리합니다.
+import 후 Qdrant 검색을 위한 임베딩과 색인을 진행합니다. Kafka가 활성화된 경우 index worker가 비동기로 처리하고, 비활성화된 경우 요청 흐름에서 직접 처리합니다.
 
 ### 검색, 요약, 퀴즈
 
 - OpenAI `text-embedding-3-small`로 대화 임베딩
 - Qdrant cosine 검색과 MongoDB 상세 정보 병합
-- 저장된 대화를 OpenAI 모델로 요약
+- 저장된 대화를 선택한 모델로 요약
 - 요약 기반 4지선다 퀴즈 생성/풀이
-- 임베딩, 요약, 퀴즈 비용 추적
+- 임베딩, 요약, 퀴즈 비용 표시
 
 ### AI 뉴스
 
@@ -58,13 +61,6 @@ mk3 FastAPI
 - 기업/태그 자동 추출
 - 기사별 AI 분석, 예상 질문/답변 생성
 - Kafka 기반 스크랩/분석 작업과 BackgroundTask fallback
-
-### AI 서비스 Dashboard
-
-- ChatGPT, Codex, Claude, Claude Code, Gemini, Cursor 등 구독 서비스 CRUD
-- 월 비용, 결제일, 사용량, 청구 URL, 메모 관리
-- 실제 Chrome 세션에 CDP로 붙어 사용량/결제 정보를 스크래핑
-- ChatGPT/Codex, Claude/Claude Code처럼 같은 구독을 공유하는 서비스의 비용 중복 집계 방지
 
 ## 저장소 구조
 
@@ -74,14 +70,14 @@ personal-operating-system-mk3/
 │  ├─ api/v1/                  # health, chat, import, search, news, scraper, ai-services
 │  ├─ application/             # chat/search/import/news/ai-service 유스케이스
 │  ├─ adapter/
-│  │  ├─ importer/             # chatgpt, claude, claude-code, codex, gemini parser
+│  │  ├─ importer/             # chatgpt, codex, claude, claude-code, gemini parser
 │  │  ├─ mongodb/              # repository 구현
 │  │  ├─ qdrant/               # vector repository
-│  │  └─ scraper/              # CDP/requests 기반 scraper
+│  │  └─ scraper/              # AI 서비스 사용량, 뉴스 scraper
 │  ├─ core/                    # config, auth, dependency, S3
 │  ├─ domain/                  # Conversation, Message, Article, AIService
 │  └─ workers/                 # Kafka index/news worker
-├─ frontend/app/               # Nuxt 3 보조 UI
+├─ frontend/app/               # Nuxt 3
 ├─ k8s/                        # Kubernetes base/AWS overlay
 ├─ compose.yaml                # api, web, workers, MongoDB, Qdrant, Kafka
 ├─ compose.data-box.yaml       # MongoDB/Qdrant/Kafka 분리 운영용
@@ -92,7 +88,6 @@ personal-operating-system-mk3/
 
 | 영역 | Endpoint | 설명 |
 |---|---|---|
-| Health | `GET /api/v1/health` | API, MongoDB, Qdrant 상태 |
 | Chat | `POST /api/v1/chat/openai`, `/gemini`, `/claude` | SSE 채팅 |
 | Chat | `GET /api/v1/chat/conversations`, `GET /api/v1/chat/conversations/{id}/messages` | 대화/메시지 조회 |
 | Chat | `PATCH/DELETE /api/v1/chat/conversations/{id}`, `PATCH/DELETE /api/v1/chat/messages/{id}` | 숨김, 수정, 삭제 |
@@ -144,8 +139,8 @@ KAFKA_ENABLED=false
 S3_BUCKET=
 ```
 
-`AUTH_SERVICE_URL`은 mk2 auth-service 주소입니다. mk2 BFF를 통하지 않고 mk3 API를 직접 호출할 때도 Bearer JWT 또는 `pos_session` 쿠키가 필요합니다.
-백엔드를 직접 실행할 때는 `KAFKA_ENABLED=false`로 시작할 수 있고, `compose.yaml`과 `dev.ps1`은 Kafka와 worker까지 쓰도록 이 값을 실행 환경에서 `true`로 덮어씁니다.
+`AUTH_SERVICE_URL`은 mk2 auth-service 주소입니다. mk3 API는 mk2 BFF를 통하지 않고 직접 호출할 때도 Bearer JWT 또는 `pos_session` 쿠키로 인증해야 합니다.
+백엔드만 직접 실행할 때는 `KAFKA_ENABLED=false`로 시작할 수 있으며, 전체 실행 시에는 `KAFKA_ENABLED=true`로 실행해 Kafka와 worker를 함께 사용합니다.
 
 ### 2. Docker Compose로 전체 실행
 
@@ -153,7 +148,7 @@ S3_BUCKET=
 docker compose up -d --build
 ```
 
-인증이 필요한 대부분의 API는 mk2 auth-service(`:3002`)가 떠 있어야 동작합니다. `/api/v1/health`는 인증 없이 MongoDB와 Qdrant 연결 상태를 확인할 수 있습니다.
+인증이 필요한 대부분의 API는 mk2 auth-service(`:3002`)가 떠 있어야 동작합니다.
 
 기본 포트:
 
@@ -169,7 +164,7 @@ docker compose up -d --build
 .\dev.ps1
 ```
 
-스크립트는 MongoDB, Qdrant, Kafka를 올리고 Kafka topic을 만든 뒤 FastAPI, index worker, news worker, Nuxt dev server를 job으로 실행합니다.
+스크립트는 MongoDB, Qdrant, Kafka를 올리고 Kafka topic을 만든 뒤 FastAPI, Nuxt dev server, index worker, news worker를 job으로 실행합니다.
 
 ### 4. 백엔드만 직접 실행
 
@@ -181,7 +176,7 @@ pip install -r requirements.txt
 uvicorn app.main:app --reload --port 8001
 ```
 
-### 5. Nuxt 보조 UI만 실행
+### 5. Nuxt만 실행
 
 ```powershell
 cd frontend
@@ -201,8 +196,8 @@ pytest
 ## 배포 구성
 
 - `Dockerfile.api`, `Dockerfile.web`: FastAPI와 Nuxt 이미지 분리
-- `compose.yaml`: api, web, index-worker, news-worker, MongoDB, Qdrant, Kafka 로컬 스택
+- `compose.yaml`: api, web, MongoDB, Qdrant, Kafka, index-worker, news-worker 로컬 스택
 - `compose.data-box.yaml`: MongoDB/Qdrant/Kafka를 별도 data-box로 운영할 때 사용
 - `k8s/base`: Namespace, ConfigMap, Secret 예시, MongoDB, Qdrant, API, Web, Ingress
 - `k8s/overlays/aws`: 외부 데이터 서비스, ECR 이미지, API/Web/worker 배포 패치
-- `.github/workflows/ecr-push.yml`: 수동 실행으로 api/web 이미지를 ECR에 push하고 self-hosted runner에서 k3s rollout restart
+- `.github/workflows/ecr-push.yml`: api/web 이미지를 ECR push 후 self-hosted runner에서 k3s rollout restart
