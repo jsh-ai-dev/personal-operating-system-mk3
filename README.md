@@ -164,7 +164,7 @@ docker compose up -d --build
 .\dev.ps1
 ```
 
-스크립트는 MongoDB, Qdrant, Kafka를 올리고 Kafka topic을 만든 뒤 FastAPI, Nuxt dev server, index worker, news worker를 job으로 실행합니다.
+스크립트는 MongoDB, Qdrant, Kafka를 올리고 Kafka topic을 만든 뒤 FastAPI, Nuxt dev server, index worker, news worker를 실행합니다.
 
 ### 4. 백엔드만 직접 실행
 

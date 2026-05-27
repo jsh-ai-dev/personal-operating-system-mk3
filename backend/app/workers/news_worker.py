@@ -106,4 +106,7 @@ async def run_worker() -> None:
 
 
 if __name__ == "__main__":
-    asyncio.run(run_worker())
+    try:
+        asyncio.run(run_worker())
+    except KeyboardInterrupt:
+        logger.info("news worker stopped.")

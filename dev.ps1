@@ -26,12 +26,54 @@ function Wait-DockerContainer {
     throw "Timed out waiting for Docker container '$Name'."
 }
 
-function Receive-PrefixedJob {
-    param([Parameter(Mandatory = $true)]$Job)
+function Start-DevProcess {
+    param(
+        [Parameter(Mandatory = $true)][string]$Name,
+        [Parameter(Mandatory = $true)][string]$FileName,
+        [Parameter(Mandatory = $true)][string[]]$ArgumentList,
+        [Parameter(Mandatory = $true)][string]$WorkingDirectory,
+        [hashtable]$Environment = @{}
+    )
 
-    Receive-Job $Job -ErrorAction Continue 2>&1 | ForEach-Object {
-        Write-Host "[$($Job.Name)] $_"
+    $startInfo = [System.Diagnostics.ProcessStartInfo]::new()
+    $startInfo.FileName = $FileName
+    $startInfo.WorkingDirectory = $WorkingDirectory
+    $startInfo.UseShellExecute = $false
+    $startInfo.RedirectStandardInput = $true
+    $startInfo.Arguments = ($ArgumentList | ForEach-Object {
+        if ($_ -match '[\s"]') {
+            '"' + ($_ -replace '"', '\"') + '"'
+        } else {
+            $_
+        }
+    }) -join ' '
+
+    foreach ($key in $Environment.Keys) {
+        $startInfo.Environment[$key] = [string]$Environment[$key]
     }
+
+    $process = [System.Diagnostics.Process]::new()
+    $process.StartInfo = $startInfo
+    if (-not $process.Start()) {
+        throw "Failed to start mk3 dev process '$Name'."
+    }
+
+    [pscustomobject]@{
+        Name = $Name
+        Process = $process
+    }
+}
+
+function Stop-DevProcessTree {
+    param([Parameter(Mandatory = $true)]$DevProcess)
+
+    $process = $DevProcess.Process
+    if ($process.HasExited) {
+        return
+    }
+
+    Write-Host "  [stop] $($DevProcess.Name) pid=$($process.Id)"
+    & taskkill /PID $process.Id /T /F 2>$null | Out-Null
 }
 
 if (-not (Get-Command docker -ErrorAction SilentlyContinue)) {
@@ -78,104 +120,81 @@ $backendPath = Join-Path $rootPath "backend"
 $frontendPath = Join-Path $rootPath "frontend"
 $venvPython = Join-Path $rootPath ".venv\Scripts\python.exe"
 $pythonCommand = if (Test-Path $venvPython) { $venvPython } else { "python" }
+$nodeCommand = Get-Command node.exe -ErrorAction SilentlyContinue
+$nodeCommand = if ($nodeCommand) { $nodeCommand.Source } else { "node" }
+$nuxtCli = Join-Path $frontendPath "node_modules\nuxt\bin\nuxt.mjs"
+
+$commonDevEnvironment = @{
+    NO_COLOR = "1"
+    FORCE_COLOR = "0"
+}
+
+$kafkaEnvironment = $commonDevEnvironment.Clone()
+$kafkaEnvironment["KAFKA_ENABLED"] = "true"
+$kafkaEnvironment["KAFKA_BOOTSTRAP_SERVERS"] = "localhost:9092"
+$kafkaEnvironment["KAFKA_CONVERSATION_INDEX_TOPIC"] = "mk3.conversation.index-requested.v1"
+$kafkaEnvironment["KAFKA_NEWS_SCRAPE_TOPIC"] = "mk3.news.scrape-requested.v1"
+$kafkaEnvironment["KAFKA_NEWS_ANALYSIS_TOPIC"] = "mk3.news.analysis-requested.v1"
 
 Write-Host ""
 Write-Host "Starting mk3 api/web/index-worker/news-worker..."
 Write-Host "  [api] $pythonCommand -m uvicorn app.main:app --reload --port 8001"
 Write-Host "  [index-worker] $pythonCommand -m app.workers.conversation_index_worker"
 Write-Host "  [news-worker] $pythonCommand -m app.workers.news_worker"
-Write-Host "  [web] npm run dev"
+Write-Host "  [web] $nodeCommand $nuxtCli dev"
 Write-Host "Press Ctrl+C to stop mk3 app processes."
 Write-Host ""
 
-$jobs = @()
+$devProcesses = @()
 try {
-    $jobs += Start-Job -Name "api" -ScriptBlock {
-        param($WorkingDirectory, $PythonCommand)
-        Set-Location $WorkingDirectory
-        $env:KAFKA_ENABLED = "true"
-        $env:KAFKA_BOOTSTRAP_SERVERS = "localhost:9092"
-        $env:KAFKA_CONVERSATION_INDEX_TOPIC = "mk3.conversation.index-requested.v1"
-        $env:KAFKA_NEWS_SCRAPE_TOPIC = "mk3.news.scrape-requested.v1"
-        $env:KAFKA_NEWS_ANALYSIS_TOPIC = "mk3.news.analysis-requested.v1"
-        & $PythonCommand -m uvicorn app.main:app --reload --port 8001 2>&1
-        if ($LASTEXITCODE -ne 0) {
-            throw "api exited with code $LASTEXITCODE"
-        }
-    } -ArgumentList $backendPath, $pythonCommand
+    $devProcesses += Start-DevProcess `
+        -Name "api" `
+        -FileName $pythonCommand `
+        -ArgumentList @("-m", "uvicorn", "app.main:app", "--reload", "--port", "8001") `
+        -WorkingDirectory $backendPath `
+        -Environment $kafkaEnvironment
 
-    $jobs += Start-Job -Name "index-worker" -ScriptBlock {
-        param($WorkingDirectory, $PythonCommand)
-        Set-Location $WorkingDirectory
-        $env:KAFKA_ENABLED = "true"
-        $env:KAFKA_BOOTSTRAP_SERVERS = "localhost:9092"
-        $env:KAFKA_CONVERSATION_INDEX_TOPIC = "mk3.conversation.index-requested.v1"
-        $env:KAFKA_CONVERSATION_INDEX_GROUP_ID = "mk3-conversation-index-worker"
-        & $PythonCommand -m app.workers.conversation_index_worker 2>&1
-        if ($LASTEXITCODE -ne 0) {
-            throw "index-worker exited with code $LASTEXITCODE"
-        }
-        throw "index-worker exited unexpectedly."
-    } -ArgumentList $backendPath, $pythonCommand
+    $indexWorkerEnvironment = $kafkaEnvironment.Clone()
+    $indexWorkerEnvironment["KAFKA_CONVERSATION_INDEX_GROUP_ID"] = "mk3-conversation-index-worker"
+    $devProcesses += Start-DevProcess `
+        -Name "index-worker" `
+        -FileName $pythonCommand `
+        -ArgumentList @("-m", "app.workers.conversation_index_worker") `
+        -WorkingDirectory $backendPath `
+        -Environment $indexWorkerEnvironment
 
-    $jobs += Start-Job -Name "news-worker" -ScriptBlock {
-        param($WorkingDirectory, $PythonCommand)
-        Set-Location $WorkingDirectory
-        $env:KAFKA_ENABLED = "true"
-        $env:KAFKA_BOOTSTRAP_SERVERS = "localhost:9092"
-        $env:KAFKA_NEWS_SCRAPE_TOPIC = "mk3.news.scrape-requested.v1"
-        $env:KAFKA_NEWS_ANALYSIS_TOPIC = "mk3.news.analysis-requested.v1"
-        $env:KAFKA_NEWS_GROUP_ID = "mk3-news-worker"
-        & $PythonCommand -m app.workers.news_worker 2>&1
-        if ($LASTEXITCODE -ne 0) {
-            throw "news-worker exited with code $LASTEXITCODE"
-        }
-        throw "news-worker exited unexpectedly."
-    } -ArgumentList $backendPath, $pythonCommand
+    $newsWorkerEnvironment = $kafkaEnvironment.Clone()
+    $newsWorkerEnvironment["KAFKA_NEWS_GROUP_ID"] = "mk3-news-worker"
+    $devProcesses += Start-DevProcess `
+        -Name "news-worker" `
+        -FileName $pythonCommand `
+        -ArgumentList @("-m", "app.workers.news_worker") `
+        -WorkingDirectory $backendPath `
+        -Environment $newsWorkerEnvironment
 
-    $jobs += Start-Job -Name "web" -ScriptBlock {
-        param($WorkingDirectory)
-        Set-Location $WorkingDirectory
-        npm run dev 2>&1
-        if ($LASTEXITCODE -ne 0) {
-            throw "web exited with code $LASTEXITCODE"
-        }
-    } -ArgumentList $frontendPath
+    $devProcesses += Start-DevProcess `
+        -Name "web" `
+        -FileName $nodeCommand `
+        -ArgumentList @($nuxtCli, "dev") `
+        -WorkingDirectory $frontendPath `
+        -Environment $commonDevEnvironment
 
     while ($true) {
-        foreach ($job in $jobs) {
-            Receive-PrefixedJob -Job $job
-        }
-
-        $failed = $jobs | Where-Object { $_.State -eq "Failed" }
-        if ($failed) {
-            foreach ($job in $failed) {
-                Receive-PrefixedJob -Job $job
-            }
-            throw "mk3 dev process '$($failed[0].Name)' failed."
-        }
-
-        $stopped = $jobs | Where-Object { $_.State -ne "Running" }
+        $stopped = $devProcesses | Where-Object { $_.Process.HasExited }
         if ($stopped) {
-            foreach ($job in $stopped) {
-                Receive-PrefixedJob -Job $job
-            }
-            throw "mk3 dev process '$($stopped[0].Name)' stopped unexpectedly with state '$($stopped[0].State)'."
-        }
-
-        $running = $jobs | Where-Object { $_.State -eq "Running" }
-        if (-not $running) {
-            break
+            throw "mk3 dev process '$($stopped[0].Name)' stopped unexpectedly with exit code '$($stopped[0].Process.ExitCode)'."
         }
 
         Start-Sleep -Milliseconds 500
     }
 } finally {
-    foreach ($job in $jobs) {
-        if ($job.State -eq "Running") {
-            Stop-Job $job
-        }
-        Receive-PrefixedJob -Job $job
-        Remove-Job $job -Force
+    if ($devProcesses.Count -gt 0) {
+        Write-Host ""
+        Write-Host "Stopping mk3 app process trees..."
     }
+    foreach ($devProcess in $devProcesses) {
+        Stop-DevProcessTree -DevProcess $devProcess
+    }
+    [Console]::ResetColor()
+    [Console]::CursorVisible = $true
 }
