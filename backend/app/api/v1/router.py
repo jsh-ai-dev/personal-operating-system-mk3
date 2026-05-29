@@ -3,7 +3,7 @@
 
 from fastapi import APIRouter, Depends
 
-from app.api.v1 import health, ai_services, scraper, chat, import_api, search, news
+from app.api.v1 import health, ai_services, scraper, chat, import_api, search, news, diet
 from app.core.auth import get_current_user
 
 router = APIRouter()
@@ -14,3 +14,4 @@ router.include_router(chat.router, dependencies=[Depends(get_current_user)])
 router.include_router(import_api.router, dependencies=[Depends(get_current_user)])
 router.include_router(search.router, dependencies=[Depends(get_current_user)])
 router.include_router(news.router, dependencies=[Depends(get_current_user)])
+router.include_router(diet.router, dependencies=[Depends(get_current_user)])
