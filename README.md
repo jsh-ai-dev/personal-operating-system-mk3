@@ -62,6 +62,12 @@ import 후 Qdrant 검색을 위한 임베딩과 색인을 진행합니다. Kafka
 - 기사별 AI 분석, 예상 질문/답변 생성
 - Kafka 기반 스크랩/분석 작업과 BackgroundTask fallback
 
+### AI 식단 기록
+
+- 자연어 식사 기록을 날짜별 아침/점심/저녁/간식 영양 정보로 변환
+- `gpt-5-nano`와 웹 검색 도구를 사용해 공개 영양 정보와 일반 추정값을 조합
+- 현재/목표 체중, 일일 목표 칼로리와 탄단지 설정 저장
+
 ## 저장소 구조
 
 ```text
@@ -97,6 +103,7 @@ personal-operating-system-mk3/
 | Import | `GET /api/v1/import/history`, `GET/DELETE /api/v1/import/uploads/{source}` | import 이력과 업로드 관리 |
 | Search | `GET /api/v1/search?q=...`, `POST /api/v1/search/index` | 벡터 검색과 전체 재색인 |
 | News | `POST /api/v1/news/scrape`, `GET /api/v1/news`, `POST /api/v1/news/{id}/analyze` | 뉴스 수집/조회/분석 |
+| Diet | `GET/PUT /api/v1/diet/profile`, `GET /api/v1/diet/days/{dateKey}`, `POST /api/v1/diet/days/{dateKey}/analyze` | 식단 목표와 날짜별 AI 식단 분석 |
 | Scraper | `POST /api/v1/scraper/{claude|chatgpt|codex|gemini|cursor}` | 구독 사용량 동기화 |
 | AI Services | `GET/POST/PUT/DELETE /api/v1/ai-services` | 구독 서비스 CRUD |
 
