@@ -60,6 +60,15 @@ def _calc_total(meals: dict[str, MealSummary]) -> Nutrients:
     )
 
 
+def _merge_sources(existing: list[str], incoming: list[str]) -> list[str]:
+    merged: list[str] = []
+    for source in [*existing, *incoming]:
+        url = str(source).strip()
+        if url and url not in merged:
+            merged.append(url)
+    return merged
+
+
 class DietRepository:
     def __init__(self, db: AsyncIOMotorDatabase):
         self.profiles = db["diet_profiles"]
@@ -145,6 +154,10 @@ class DietRepository:
         doc = await self.days.find_one({"owner_id": owner_id, "date_key": date_key})
         return self._to_day(doc, date_key)
 
+    async def delete_day(self, owner_id: str, date_key: str) -> bool:
+        result = await self.days.delete_one({"owner_id": owner_id, "date_key": date_key})
+        return result.deleted_count > 0
+
     async def save_analysis(
         self,
         owner_id: str,
@@ -160,6 +173,16 @@ class DietRepository:
         cost_usd: float,
     ) -> DietDay:
         now = datetime.now(timezone.utc)
+        existing_doc = await self.days.find_one(
+            {"owner_id": owner_id, "date_key": date_key},
+            {"sources": 1},
+        )
+        existing_sources = (
+            existing_doc.get("sources", [])
+            if existing_doc and isinstance(existing_doc.get("sources"), list)
+            else []
+        )
+        merged_sources = _merge_sources(existing_sources, sources)
         meal_docs = {
             key: {
                 "label": meal.label,
@@ -186,7 +209,7 @@ class DietRepository:
                 "$set": {
                     "meals": meal_docs,
                     "tip": tip,
-                    "sources": sources,
+                    "sources": merged_sources,
                     "updated_at": now,
                 },
                 "$push": {"messages": {"$each": messages}},

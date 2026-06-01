@@ -68,6 +68,16 @@ async def get_day(
     return asdict(await svc.get_day(user.id, date_key))
 
 
+@router.delete("/days/{date_key}", status_code=204)
+async def delete_day(
+    date_key: str,
+    svc: DietService = Depends(_get_svc),
+    user: AuthUser = Depends(get_current_user),
+):
+    _validate_date_key(date_key)
+    await svc.delete_day(user.id, date_key)
+
+
 @router.post("/days/{date_key}/analyze")
 async def analyze_day(
     date_key: str,

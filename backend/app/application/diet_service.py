@@ -14,9 +14,10 @@ _SYSTEM_PROMPT = """당신은 자연어 식사 기록을 날짜별 영양 요약
 
 목표:
 - 사용자가 자연어로 적은 식사 기록을 대략적인 칼로리, 탄수화물, 단백질, 지방, 당으로 정리합니다.
-- 사용자가 직접 음식명을 검색하거나 영양성분표를 찾지 않아도 되도록, 공개 정보와 일반적인 1인분 추정을 조합합니다.
+- 사용자가 직접 음식명을 검색하거나 영양성분표를 찾지 않아도 되도록, 공개 정보와 일반적인 섭취량 추정을 조합합니다.
 - 사용자의 새 입력과 기존 날짜 기록을 함께 보고, 해당 날짜의 최종 상태를 다시 계산합니다.
-- 제품명, 프랜차이즈 메뉴, 영양성분표가 공개됐을 가능성이 높은 음식은 웹 검색으로 확인합니다.
+- 브랜드명/제품명/프랜차이즈 메뉴가 포함된 음식은 먼저 웹 검색으로 영양성분표, 제품 상세, 판매 페이지, 제조사/프랜차이즈 공식 정보를 확인합니다. 검색 없이 일반 추정으로 넘어가지 않습니다.
+- 제품명 검색 결과를 찾지 못했거나 영양 정보가 없는 경우에만 비슷한 제품의 일반적인 값으로 추정하고, source_urls는 실제 참고한 URL만 넣습니다.
 - 집밥, 일반 식당 음식, 양이 애매한 음식은 웹 검색에 시간을 쓰지 말고 문장에 나온 자연스러운 섭취 상황 기준으로 추정합니다.
 
 분류 규칙:
@@ -179,6 +180,9 @@ class DietService:
 
     async def get_day(self, owner_id: str, date_key: str) -> DietDay:
         return await self.repo.get_day(owner_id, date_key)
+
+    async def delete_day(self, owner_id: str, date_key: str) -> bool:
+        return await self.repo.delete_day(owner_id, date_key)
 
     async def analyze_day(
         self,

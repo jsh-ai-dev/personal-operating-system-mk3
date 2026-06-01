@@ -1,3 +1,4 @@
+from app.adapter.mongodb.diet_repository import _merge_sources
 from app.application.diet_service import normalize_ai_result
 
 
@@ -26,3 +27,14 @@ def test_normalize_ai_result_fills_missing_meals_and_clamps_numbers():
     assert meals["lunch"].nutrients.fat_g == 0
     assert meals["lunch"].nutrients.sugar_g == 14
     assert tip == "단백질을 먼저 챙기세요."
+
+
+def test_merge_sources_keeps_order_and_removes_duplicates():
+    assert _merge_sources(
+        ["https://example.com/bagel", "https://example.com/jam"],
+        ["https://example.com/bagel", "https://example.com/chicken"],
+    ) == [
+        "https://example.com/bagel",
+        "https://example.com/jam",
+        "https://example.com/chicken",
+    ]
