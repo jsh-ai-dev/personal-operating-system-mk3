@@ -238,4 +238,19 @@ backend/data/
 k8s/base/secret.yaml
 k8s/overlays/aws/secret.aws.yaml
 
+### AI harness local artifacts ###
+# Keep Spec Kit / BMAD / agent workflow files local-only.
+/.specify/
+/specs/
+/docs/specs/
+/_bmad/
+/_bmad-output/
+/.codex/
+/.claude/
+/.cursor/
+/.windsurf/
+AGENTS.md
+PLANS.md
 CLAUDE.md
+GEMINI.md
+project-context.md
