@@ -1,5 +1,6 @@
 import json
 from dataclasses import asdict
+from datetime import datetime, timedelta, timezone
 
 from openai import AsyncOpenAI
 
@@ -9,6 +10,9 @@ from app.domain.diet import DietDay, DietProfile, MEAL_KEYS, MealSummary, Nutrie
 
 
 DEFAULT_DIET_MODEL = "gpt-5-nano"
+DEFAULT_RECENT_DAYS = 14
+DEFAULT_RECENT_LIMIT = 20
+KST = timezone(timedelta(hours=9))
 
 _SYSTEM_PROMPT = """당신은 자연어 식사 기록을 날짜별 영양 요약으로 변환하는 식단 기록 도우미입니다.
 
@@ -138,6 +142,12 @@ def normalize_sources(payload: dict) -> list[str]:
     return sources[:8]
 
 
+def validate_meal_key(meal_key: str) -> str:
+    if meal_key not in MEAL_KEYS:
+        raise ValueError(f"지원하지 않는 식사 구분: {meal_key}")
+    return meal_key
+
+
 def _day_for_prompt(day: DietDay) -> dict:
     return {
         "meals": {
@@ -183,6 +193,44 @@ class DietService:
 
     async def delete_day(self, owner_id: str, date_key: str) -> bool:
         return await self.repo.delete_day(owner_id, date_key)
+
+    async def list_recent_meal_candidates(
+        self,
+        owner_id: str,
+        days: int = DEFAULT_RECENT_DAYS,
+        limit: int = DEFAULT_RECENT_LIMIT,
+    ) -> list[dict]:
+        bounded_days = min(max(days, 1), DEFAULT_RECENT_DAYS)
+        bounded_limit = min(max(limit, 1), DEFAULT_RECENT_LIMIT)
+        today = datetime.now(KST).date()
+        start = today - timedelta(days=bounded_days - 1)
+        return await self.repo.list_recent_meal_candidates(
+            owner_id=owner_id,
+            start_date_key=start.isoformat(),
+            end_date_key=today.isoformat(),
+            limit=bounded_limit,
+        )
+
+    async def copy_meal(
+        self,
+        owner_id: str,
+        source_date_key: str,
+        source_meal_key: str,
+        target_date_key: str,
+        target_meal_key: str,
+    ) -> DietDay:
+        validate_meal_key(source_meal_key)
+        validate_meal_key(target_meal_key)
+        copied = await self.repo.copy_meal(
+            owner_id=owner_id,
+            source_date_key=source_date_key,
+            source_meal_key=source_meal_key,
+            target_date_key=target_date_key,
+            target_meal_key=target_meal_key,
+        )
+        if copied is None:
+            raise ValueError("복사할 원본 식사가 비어 있거나 없습니다.")
+        return copied
 
     async def analyze_day(
         self,

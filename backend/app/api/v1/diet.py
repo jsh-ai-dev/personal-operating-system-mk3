@@ -36,6 +36,12 @@ class AnalyzeDietRequest(BaseModel):
     model: str = DEFAULT_DIET_MODEL
 
 
+class CopyMealRequest(BaseModel):
+    source_date_key: str
+    source_meal_key: str
+    target_meal_key: str
+
+
 def _validate_date_key(date_key: str) -> None:
     if not _DATE_RE.match(date_key):
         raise HTTPException(status_code=400, detail="date_key must be YYYY-MM-DD")
@@ -58,6 +64,22 @@ async def upsert_profile(
     return asdict(await svc.upsert_profile(user.id, body.model_dump()))
 
 
+@router.get("/days/recent-meals")
+async def list_recent_meals(
+    days: int = 14,
+    limit: int = 20,
+    svc: DietService = Depends(_get_svc),
+    user: AuthUser = Depends(get_current_user),
+):
+    return {
+        "candidates": await svc.list_recent_meal_candidates(
+            user.id,
+            days=days,
+            limit=limit,
+        )
+    }
+
+
 @router.get("/days/{date_key}")
 async def get_day(
     date_key: str,
@@ -76,6 +98,29 @@ async def delete_day(
 ):
     _validate_date_key(date_key)
     await svc.delete_day(user.id, date_key)
+
+
+@router.post("/days/{date_key}/copy-meal")
+async def copy_meal(
+    date_key: str,
+    body: CopyMealRequest,
+    svc: DietService = Depends(_get_svc),
+    user: AuthUser = Depends(get_current_user),
+):
+    _validate_date_key(date_key)
+    _validate_date_key(body.source_date_key)
+    try:
+        return asdict(
+            await svc.copy_meal(
+                owner_id=user.id,
+                source_date_key=body.source_date_key,
+                source_meal_key=body.source_meal_key,
+                target_date_key=date_key,
+                target_meal_key=body.target_meal_key,
+            )
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
 
 
 @router.post("/days/{date_key}/analyze")

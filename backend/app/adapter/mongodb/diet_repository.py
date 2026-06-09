@@ -50,6 +50,10 @@ def _empty_meals() -> dict[str, MealSummary]:
     return {key: MealSummary(label=labels[key]) for key in MEAL_KEYS}
 
 
+def _meal_label(key: str) -> str:
+    return _empty_meals()[key].label
+
+
 def _calc_total(meals: dict[str, MealSummary]) -> Nutrients:
     return Nutrients(
         calories=sum(meal.nutrients.calories for meal in meals.values()),
@@ -57,6 +61,33 @@ def _calc_total(meals: dict[str, MealSummary]) -> Nutrients:
         carbs_g=sum(meal.nutrients.carbs_g for meal in meals.values()),
         fat_g=sum(meal.nutrients.fat_g for meal in meals.values()),
         sugar_g=sum(meal.nutrients.sugar_g for meal in meals.values()),
+    )
+
+
+def _meal_is_non_empty(meal: MealSummary) -> bool:
+    nutrients = meal.nutrients
+    return bool(meal.items) or any(
+        [
+            nutrients.calories,
+            nutrients.protein_g,
+            nutrients.carbs_g,
+            nutrients.fat_g,
+            nutrients.sugar_g,
+        ]
+    )
+
+
+def _clone_meal_for_key(meal: MealSummary, target_key: str) -> MealSummary:
+    return MealSummary(
+        label=_meal_label(target_key),
+        items=[*meal.items],
+        nutrients=Nutrients(
+            calories=meal.nutrients.calories,
+            protein_g=meal.nutrients.protein_g,
+            carbs_g=meal.nutrients.carbs_g,
+            fat_g=meal.nutrients.fat_g,
+            sugar_g=meal.nutrients.sugar_g,
+        ),
     )
 
 
@@ -157,6 +188,90 @@ class DietRepository:
     async def delete_day(self, owner_id: str, date_key: str) -> bool:
         result = await self.days.delete_one({"owner_id": owner_id, "date_key": date_key})
         return result.deleted_count > 0
+
+    async def list_recent_meal_candidates(
+        self,
+        owner_id: str,
+        start_date_key: str,
+        end_date_key: str,
+        limit: int,
+    ) -> list[dict]:
+        candidates: list[dict] = []
+        cursor = self.days.find(
+            {
+                "owner_id": owner_id,
+                "date_key": {"$gte": start_date_key, "$lte": end_date_key},
+            }
+        ).sort("date_key", -1)
+
+        async for doc in cursor:
+            day = self._to_day(doc, str(doc.get("date_key") or ""))
+            for key in MEAL_KEYS:
+                meal = day.meals[key]
+                if not _meal_is_non_empty(meal):
+                    continue
+                candidates.append(
+                    {
+                        "date_key": day.date_key,
+                        "meal_key": key,
+                        "label": meal.label,
+                        "items": meal.items,
+                        "nutrients": _nutrients_to_doc(meal.nutrients),
+                    }
+                )
+                if len(candidates) >= limit:
+                    return candidates
+        return candidates
+
+    async def copy_meal(
+        self,
+        owner_id: str,
+        source_date_key: str,
+        source_meal_key: str,
+        target_date_key: str,
+        target_meal_key: str,
+    ) -> DietDay | None:
+        source_doc = await self.days.find_one({"owner_id": owner_id, "date_key": source_date_key})
+        if not source_doc:
+            return None
+
+        source_day = self._to_day(source_doc, source_date_key)
+        source_meal = source_day.meals[source_meal_key]
+        if not _meal_is_non_empty(source_meal):
+            return None
+
+        target_doc = await self.days.find_one({"owner_id": owner_id, "date_key": target_date_key})
+        target_day = self._to_day(target_doc, target_date_key)
+        next_meals = {**target_day.meals}
+        next_meals[target_meal_key] = _clone_meal_for_key(source_meal, target_meal_key)
+        meal_docs = {
+            key: {
+                "label": meal.label,
+                "items": meal.items,
+                "nutrients": _nutrients_to_doc(meal.nutrients),
+            }
+            for key, meal in next_meals.items()
+        }
+
+        now = datetime.now(timezone.utc)
+        await self.days.update_one(
+            {"owner_id": owner_id, "date_key": target_date_key},
+            {
+                "$set": {
+                    "meals": meal_docs,
+                    "updated_at": now,
+                },
+                "$setOnInsert": {
+                    "owner_id": owner_id,
+                    "date_key": target_date_key,
+                    "tip": "",
+                    "sources": [],
+                    "messages": [],
+                },
+            },
+            upsert=True,
+        )
+        return await self.get_day(owner_id, target_date_key)
 
     async def save_analysis(
         self,
