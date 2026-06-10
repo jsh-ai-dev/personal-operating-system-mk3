@@ -3,7 +3,7 @@ from datetime import date
 
 import pytest
 
-from app.adapter.mongodb.diet_repository import _merge_sources
+from app.adapter.mongodb.diet_repository import _meal_content_key, _merge_sources
 from app.application.diet_service import DEFAULT_RECENT_DAYS, DEFAULT_RECENT_LIMIT, DietService, normalize_ai_result
 from app.domain.diet import DietDay, DietMessage, MealSummary, Nutrients
 
@@ -12,6 +12,8 @@ class FakeDietRepo:
     def __init__(self):
         self.copy_result = None
         self.copy_calls = []
+        self.clear_result = None
+        self.clear_calls = []
         self.recent_calls = []
 
     async def copy_meal(
@@ -32,6 +34,21 @@ class FakeDietRepo:
             }
         )
         return self.copy_result
+
+    async def clear_meal(
+        self,
+        owner_id: str,
+        target_date_key: str,
+        target_meal_key: str,
+    ):
+        self.clear_calls.append(
+            {
+                "owner_id": owner_id,
+                "target_date_key": target_date_key,
+                "target_meal_key": target_meal_key,
+            }
+        )
+        return self.clear_result
 
     async def list_recent_meal_candidates(
         self,
@@ -101,6 +118,20 @@ def test_merge_sources_keeps_order_and_removes_duplicates():
         "https://example.com/jam",
         "https://example.com/chicken",
     ]
+
+
+def test_meal_content_key_ignores_label_for_copy_duplicates():
+    nutrients = Nutrients(calories=520, protein_g=28, carbs_g=62, fat_g=18, sugar_g=9)
+    lunch = MealSummary(label="lunch", items=["bagel", "jam"], nutrients=nutrients)
+    dinner = MealSummary(label="dinner", items=["bagel", "jam"], nutrients=nutrients)
+    changed = MealSummary(
+        label="dinner",
+        items=["bagel", "jam"],
+        nutrients=Nutrients(calories=521, protein_g=28, carbs_g=62, fat_g=18, sugar_g=9),
+    )
+
+    assert _meal_content_key(lunch) == _meal_content_key(dinner)
+    assert _meal_content_key(lunch) != _meal_content_key(changed)
 
 
 def test_copy_meal_returns_target_day_without_ai_call():
@@ -175,6 +206,61 @@ def test_copy_meal_rejects_empty_or_missing_source():
                 source_meal_key="dinner",
                 target_date_key="2026-06-09",
                 target_meal_key="lunch",
+            )
+        )
+
+
+def test_clear_meal_returns_target_day_without_ai_call():
+    repo = FakeDietRepo()
+    repo.clear_result = DietDay(
+        date_key="2026-06-10",
+        meals={
+            "breakfast": MealSummary(label="breakfast"),
+            "lunch": MealSummary(label="lunch"),
+            "dinner": MealSummary(
+                label="dinner",
+                items=["bagel"],
+                nutrients=Nutrients(calories=430, protein_g=28, carbs_g=50, fat_g=12, sugar_g=6),
+            ),
+            "snack": MealSummary(label="snack"),
+        },
+        total=Nutrients(calories=430, protein_g=28, carbs_g=50, fat_g=12, sugar_g=6),
+        tip="existing tip",
+        messages=[DietMessage(role="user", content="existing message", created_at="2026-06-10T00:00:00+00:00")],
+        sources=["https://example.com/original"],
+    )
+    svc = DietService(repo, openai_client=None)
+
+    result = asyncio.run(
+        svc.clear_meal(
+            owner_id="user-1",
+            target_date_key="2026-06-10",
+            target_meal_key="lunch",
+        )
+    )
+
+    assert result.meals["lunch"].items == []
+    assert result.meals["lunch"].nutrients.calories == 0
+    assert result.tip == "existing tip"
+    assert result.sources == ["https://example.com/original"]
+    assert repo.clear_calls == [
+        {
+            "owner_id": "user-1",
+            "target_date_key": "2026-06-10",
+            "target_meal_key": "lunch",
+        }
+    ]
+
+
+def test_clear_meal_rejects_invalid_meal_key():
+    svc = DietService(FakeDietRepo(), openai_client=None)
+
+    with pytest.raises(ValueError, match="지원하지 않는 식사 구분"):
+        asyncio.run(
+            svc.clear_meal(
+                owner_id="user-1",
+                target_date_key="2026-06-10",
+                target_meal_key="midnight",
             )
         )
 

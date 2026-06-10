@@ -1,4 +1,4 @@
-import json
+﻿import json
 from dataclasses import asdict
 from datetime import datetime, timedelta, timezone
 
@@ -232,6 +232,19 @@ class DietService:
             raise ValueError("복사할 원본 식사가 비어 있거나 없습니다.")
         return copied
 
+    async def clear_meal(
+        self,
+        owner_id: str,
+        target_date_key: str,
+        target_meal_key: str,
+    ) -> DietDay:
+        validate_meal_key(target_meal_key)
+        return await self.repo.clear_meal(
+            owner_id=owner_id,
+            target_date_key=target_date_key,
+            target_meal_key=target_meal_key,
+        )
+
     async def analyze_day(
         self,
         owner_id: str,
@@ -313,3 +326,4 @@ class DietService:
             "tokens_output": tokens_output,
             "cost_usd": cost_usd,
         }
+

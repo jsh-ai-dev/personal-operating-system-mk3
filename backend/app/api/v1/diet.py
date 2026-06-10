@@ -42,6 +42,10 @@ class CopyMealRequest(BaseModel):
     target_meal_key: str
 
 
+class ClearMealRequest(BaseModel):
+    target_meal_key: str
+
+
 def _validate_date_key(date_key: str) -> None:
     if not _DATE_RE.match(date_key):
         raise HTTPException(status_code=400, detail="date_key must be YYYY-MM-DD")
@@ -115,6 +119,26 @@ async def copy_meal(
                 owner_id=user.id,
                 source_date_key=body.source_date_key,
                 source_meal_key=body.source_meal_key,
+                target_date_key=date_key,
+                target_meal_key=body.target_meal_key,
+            )
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+@router.post("/days/{date_key}/clear-meal")
+async def clear_meal(
+    date_key: str,
+    body: ClearMealRequest,
+    svc: DietService = Depends(_get_svc),
+    user: AuthUser = Depends(get_current_user),
+):
+    _validate_date_key(date_key)
+    try:
+        return asdict(
+            await svc.clear_meal(
+                owner_id=user.id,
                 target_date_key=date_key,
                 target_meal_key=body.target_meal_key,
             )
