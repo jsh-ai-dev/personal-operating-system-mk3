@@ -161,8 +161,22 @@ class SearchService:
         vector = resp.data[0].embedding
         search_cost_usd = _calc_embed_cost(resp.usage.total_tokens)
 
+        source_point_ids = await self.conv_repo.find_rag_source_qdrant_ids(owner_id)
+        if not source_point_ids:
+            return {
+                "status": "insufficient_grounding",
+                "answer": "",
+                "sources": [],
+                "model": RAG_ANSWER_MODEL,
+                "tokens_input": 0,
+                "tokens_output": 0,
+                "cost_usd": 0.0,
+                "search_cost_usd": search_cost_usd,
+                "message": _INSUFFICIENT_GROUNDING_MESSAGE,
+            }
+
         await self.vector_repo.ensure_collection()
-        points = await self.vector_repo.search(vector, owner_id, source_limit)
+        points = await self.vector_repo.search(vector, owner_id, source_limit, point_ids=source_point_ids)
 
         conv_ids = [p.payload["conversation_id"] for p in points]
         conv_map = await self.conv_repo.find_conversations_by_ids(conv_ids, owner_id)
@@ -175,7 +189,7 @@ class SearchService:
             if cid in seen:
                 continue
             seen.add(cid)
-            if len(sources) >= RAG_MAX_SOURCES:
+            if len(sources) >= source_limit:
                 break
             if p.score < RAG_MIN_SCORE:
                 continue

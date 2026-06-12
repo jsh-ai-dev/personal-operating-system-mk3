@@ -123,6 +123,19 @@ class ConversationRepository:
         docs = await self.conversations.find({"_id": {"$in": oids}, "owner_id": owner_id}).to_list(None)
         return {str(doc["_id"]): self._to_conversation(doc) for doc in docs}
 
+    async def find_rag_source_qdrant_ids(self, owner_id: str) -> list[str]:
+        """RAG 답변 근거로 쓸 수 있는 요약/비숨김/인덱싱 완료 대화의 Qdrant point id 목록."""
+        docs = await self.conversations.find(
+            {
+                "owner_id": owner_id,
+                "is_hidden": {"$ne": True},
+                "summary": {"$exists": True, "$nin": [None, ""]},
+                "qdrant_id": {"$exists": True, "$nin": [None, ""]},
+            },
+            {"qdrant_id": 1},
+        ).to_list(None)
+        return [doc["qdrant_id"] for doc in docs if doc.get("qdrant_id")]
+
     async def find_conversation_by_source_id(self, source_id: str, owner_id: str) -> Conversation | None:
         doc = await self.conversations.find_one({"source_id": source_id, "owner_id": owner_id})
         return self._to_conversation(doc) if doc else None

@@ -18,6 +18,14 @@ class FakeConversationRepo:
             if conversation_id in self.conversations
         }
 
+    async def find_rag_source_qdrant_ids(self, owner_id: str):
+        self.requested_owner_id = owner_id
+        return [
+            conv.qdrant_id
+            for conv in self.conversations.values()
+            if conv.qdrant_id and conv.summary and not conv.is_hidden
+        ]
+
 
 class FakeVectorRepo:
     def __init__(self, points: list[SimpleNamespace]):
@@ -28,9 +36,12 @@ class FakeVectorRepo:
     async def ensure_collection(self):
         self.ensure_collection_called = True
 
-    async def search(self, vector, owner_id: str, limit: int):
-        self.search_calls.append({"vector": vector, "owner_id": owner_id, "limit": limit})
-        return self.points
+    async def search(self, vector, owner_id: str, limit: int, point_ids: list[str] | None = None):
+        self.search_calls.append({"vector": vector, "owner_id": owner_id, "limit": limit, "point_ids": point_ids})
+        points = self.points
+        if point_ids is not None:
+            points = [point for point in points if point.id in point_ids]
+        return points[:limit]
 
 
 class FakeEmbeddings:
@@ -80,11 +91,13 @@ def _conversation(
         total_cost_usd=0.001,
         summary=summary,
         is_hidden=is_hidden,
+        qdrant_id=f"point-{conversation_id}",
     )
 
 
 def _point(conversation_id: str, score: float = 0.8421) -> SimpleNamespace:
     return SimpleNamespace(
+        id=f"point-{conversation_id}",
         payload={
             "conversation_id": conversation_id,
             "title": f"대화 {conversation_id}",
@@ -177,6 +190,31 @@ def test_answer_excludes_hidden_conversations_and_caps_sources_to_five():
     source_ids = [source["conversation_id"] for source in result["sources"]]
     assert "hidden" not in source_ids
     assert source_ids == ["conv-1", "conv-2", "conv-3", "conv-4", "conv-5"]
+
+
+def test_answer_searches_only_rag_eligible_source_points():
+    conversations = [_conversation(f"unsummarized-{idx}", summary=None) for idx in range(1, 6)]
+    conversations.append(_conversation("summarized", summary="요약된 유효한 근거입니다."))
+    points = [_point(f"unsummarized-{idx}", 0.95 - idx * 0.01) for idx in range(1, 6)]
+    points.append(_point("summarized", 0.88))
+    svc, _, vector_repo, _ = _service(conversations, points)
+
+    result = asyncio.run(svc.answer("Kafka offset commit", "user-1"))
+
+    assert result["status"] == "answered"
+    assert [source["conversation_id"] for source in result["sources"]] == ["summarized"]
+    assert vector_repo.search_calls[0]["limit"] == 5
+    assert vector_repo.search_calls[0]["point_ids"] == ["point-summarized"]
+
+
+def test_answer_respects_requested_source_limit_after_filtering():
+    conversations = [_conversation(f"conv-{idx}") for idx in range(1, 6)]
+    points = [_point(f"conv-{idx}", 0.95 - idx * 0.01) for idx in range(1, 6)]
+    svc, _, _, _ = _service(conversations, points)
+
+    result = asyncio.run(svc.answer("Kafka offset commit", "user-1", limit=3))
+
+    assert [source["conversation_id"] for source in result["sources"]] == ["conv-1", "conv-2", "conv-3"]
 
 
 def test_answer_returns_token_and_cost_metadata_from_openai_usage():

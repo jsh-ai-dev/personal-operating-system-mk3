@@ -8,6 +8,7 @@ from qdrant_client.models import (
     Distance,
     FieldCondition,
     Filter,
+    HasIdCondition,
     MatchValue,
     PointIdsList,
     PointStruct,
@@ -44,14 +45,22 @@ class VectorRepository:
         )
         return pid
 
-    async def search(self, vector: list[float], owner_id: str, limit: int) -> list:
+    async def search(
+        self,
+        vector: list[float],
+        owner_id: str,
+        limit: int,
+        point_ids: list[str] | None = None,
+    ) -> list:
         # owner_id 필터로 다른 사용자의 대화가 검색 결과에 섞이지 않도록 격리
+        must_conditions = [FieldCondition(key="owner_id", match=MatchValue(value=owner_id))]
+        if point_ids is not None:
+            must_conditions.append(HasIdCondition(has_id=point_ids))
+
         result = await self.client.query_points(
             collection_name=COLLECTION,
             query=vector,
-            query_filter=Filter(
-                must=[FieldCondition(key="owner_id", match=MatchValue(value=owner_id))]
-            ),
+            query_filter=Filter(must=must_conditions),
             limit=limit,
             with_payload=True,
         )
