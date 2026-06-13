@@ -151,6 +151,31 @@ def test_answer_returns_insufficient_grounding_without_summaries():
     assert openai.chat_completions.calls == []
 
 
+def test_answer_returns_insufficient_grounding_when_scores_are_too_low():
+    svc, _, _, openai = _service(
+        [_conversation("conv-1")],
+        [_point("conv-1", 0.29)],
+    )
+
+    result = asyncio.run(svc.answer("unrelated query", "user-1"))
+
+    assert result["status"] == "insufficient_grounding"
+    assert result["sources"] == []
+    assert openai.chat_completions.calls == []
+
+
+def test_answer_accepts_sources_at_practical_relevance_threshold():
+    svc, _, _, _ = _service(
+        [_conversation("conv-1")],
+        [_point("conv-1", 0.31)],
+    )
+
+    result = asyncio.run(svc.answer("Kotlin Spring Boot Gradle", "user-1"))
+
+    assert result["status"] == "answered"
+    assert [source["conversation_id"] for source in result["sources"]] == ["conv-1"]
+
+
 def test_answer_sources_include_required_source_fields():
     svc, _, _, _ = _service(
         [

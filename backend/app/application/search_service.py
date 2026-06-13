@@ -14,7 +14,7 @@ logger = logging.getLogger(__name__)
 EMBED_MODEL = "text-embedding-3-small"
 RAG_ANSWER_MODEL = "gpt-5-mini"
 RAG_MAX_SOURCES = 5
-RAG_MIN_SCORE = 0.6
+RAG_MIN_SCORE = 0.3
 # 임베딩에 넣을 텍스트 최대 길이 — 너무 길면 토큰 초과, 너무 짧으면 검색 품질 저하
 _EMBED_CHAR_BUDGET = 3000
 _SUMMARY_EXCERPT_CHARS = 180
@@ -25,7 +25,7 @@ _RAG_SYSTEM_PROMPT = """당신은 사용자의 과거 AI 대화 요약만 근거
 규칙:
 - 제공된 출처 요약에 있는 내용만 사용하세요.
 - 출처에 없는 사실을 추측하거나 일반 지식으로 보완하지 마세요.
-- 근거가 부족하면 부족하다고 말하고, 어떤 출처를 더 요약해야 할지 짧게 안내하세요.
+- 제공된 출처만으로 답할 수 없으면 근거가 부족하다고 말하고, 더 구체적인 검색어 또는 관련 대화 요약이 필요하다고 안내하세요.
 - 한국어로 답변하세요."""
 _INSUFFICIENT_GROUNDING_MESSAGE = "관련 요약 대화가 부족합니다. 먼저 관련 대화를 요약하거나 검색어를 구체화하세요."
 
