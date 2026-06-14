@@ -54,6 +54,7 @@ import 후 Qdrant 검색을 위한 임베딩과 색인을 진행합니다. Kafka
 - 저장된 대화를 선택한 모델로 요약
 - 요약 기반 4지선다 퀴즈 생성/풀이
 - 임베딩, 요약, 퀴즈 비용 표시
+- 요약된 대화만 근거로 사용하는 RAG 답변 테스트 API
 
 ### AI 뉴스
 
@@ -102,6 +103,7 @@ personal-operating-system-mk3/
 | Import | `POST /api/v1/import/upload/{source}` | S3 import 파일 업로드 |
 | Import | `GET /api/v1/import/history`, `GET/DELETE /api/v1/import/uploads/{source}` | import 이력과 업로드 관리 |
 | Search | `GET /api/v1/search?q=...`, `POST /api/v1/search/index` | 벡터 검색과 전체 재색인 |
+| Search | `POST /api/v1/search/answer` | 요약된 대화 기반 RAG 답변 생성 |
 | News | `POST /api/v1/news/scrape`, `GET /api/v1/news`, `POST /api/v1/news/{id}/analyze` | 뉴스 수집/조회/분석 |
 | Diet | `GET/PUT /api/v1/diet/profile`, `GET /api/v1/diet/days/{dateKey}`, `POST /api/v1/diet/days/{dateKey}/analyze` | 식단 목표와 날짜별 AI 식단 분석 |
 | Scraper | `POST /api/v1/scraper/{claude|chatgpt|codex|gemini|cursor}` | 구독 사용량 동기화 |
