@@ -235,10 +235,11 @@ class SearchService:
                 "message": _INSUFFICIENT_GROUNDING_MESSAGE,
             }
 
+        joined_sources = "\n\n".join(prompt_sources)
         user_prompt = (
             f"질문: {trimmed_query}\n\n"
             "아래 출처 요약만 근거로 답변하세요.\n\n"
-            f"{'\n\n'.join(prompt_sources)}"
+            f"{joined_sources}"
         )
         response = await self.openai.chat.completions.create(
             model=RAG_ANSWER_MODEL,
